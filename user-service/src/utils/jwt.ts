@@ -1,8 +1,9 @@
 import jwt, { type Secret, type SignOptions } from 'jsonwebtoken';
+import type { Role } from '../models/user-model';
 
 export type JwtPayload = {
     sub: string;
-    role: string;
+    role: Role;
     type: 'access' | 'refresh';
 };
 

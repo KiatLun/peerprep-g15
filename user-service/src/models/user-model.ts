@@ -46,6 +46,7 @@ const userSchema = new Schema(
 userSchema.set('toJSON', {
     transform: (_doc, ret) => {
         const obj: any = { ...ret };
+        obj.id = obj._id.toString(); // Expose _id as id
         delete obj.__v; // Hide version key
         delete obj._id; // Hide MongoDB's internal _id field
         delete obj.passwordHash; // Hide password hash

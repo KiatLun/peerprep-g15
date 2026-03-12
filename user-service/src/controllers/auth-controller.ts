@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { AuthService } from '../services/auth-service';
+import { AppError } from '../utils/app-error';
 
 function refreshCookieOptions() {
     const isProd = process.env.NODE_ENV === 'production';
@@ -41,10 +42,7 @@ export class AuthController {
     static async refresh(req: Request, res: Response, next: NextFunction) {
         try {
             const refreshToken = req.cookies?.refreshToken as string | undefined;
-            if (!refreshToken)
-                return next(
-                    require('../utils/app-error').AppError.unauthorized('Missing refresh token'),
-                );
+            if (!refreshToken) return next(AppError.unauthorized('Missing refresh token'));
 
             const { accessToken, refreshToken: newRefreshToken } =
                 await AuthService.refresh(refreshToken);
@@ -64,7 +62,7 @@ export class AuthController {
                 await AuthService.logoutByRefreshToken(refreshToken);
             }
 
-            res.clearCookie('refreshToken', { path: '/auth/refresh' })
+            res.clearCookie('refreshToken', refreshCookieOptions())
                 .status(200)
                 .json({ message: 'Logged out' });
         } catch (err) {

@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt';
-import { UserModel, type SkillLevel } from '../models/user-model';
+import { UserModel, type Role, type SkillLevel } from '../models/user-model';
 import { AppError } from '../utils/app-error';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import { sha256 } from '../utils/token';
@@ -19,7 +19,7 @@ type LoginInput = {
 };
 
 export class AuthService {
-    private static issueTokens(userId: string, role: string) {
+    private static issueTokens(userId: string, role: Role) {
         const accessToken = signAccessToken({ sub: userId, role });
         const refreshToken = signRefreshToken({ sub: userId, role });
         return { accessToken, refreshToken };

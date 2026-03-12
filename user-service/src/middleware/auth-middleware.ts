@@ -22,7 +22,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
         const decoded = verifyAccessToken(token);
 
         const userId = decoded.sub;
-        const role = decoded.role as Role;
+        const role = decoded.role;
 
         if (!userId) {
             return next(AppError.unauthorized('Invalid token payload'));

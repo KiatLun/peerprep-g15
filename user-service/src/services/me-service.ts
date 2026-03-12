@@ -60,6 +60,10 @@ export class MeService {
 
             const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 10;
             user.passwordHash = await bcrypt.hash(patch.newPassword, saltRounds);
+
+            // Invalidate all existing refresh sessions
+            user.refreshTokenHash = null;
+            user.refreshTokenIssuedAt = null;
         }
 
         await user.save();
