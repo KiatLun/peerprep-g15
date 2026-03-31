@@ -48,4 +48,26 @@ export class AdminService {
 
         return user.toJSON();
     }
+
+    static async deleteUser(actorUserId: string, targetUsername: string) {
+        const username = targetUsername.trim().toLowerCase();
+
+        const user = await UserModel.findOne({ username });
+        if (!user) throw AppError.notFound('User not found');
+
+        if (user._id.toString() === actorUserId) {
+            throw AppError.forbidden('Admins cannot delete their own accounts');
+        }
+
+        if (user.role === 'admin') {
+            const adminCount = await UserModel.countDocuments({ role: 'admin' });
+            if (adminCount <= 1) {
+                throw AppError.forbidden('Cannot delete the last remaining admin');
+            }
+        }
+
+        await user.deleteOne();
+
+        return username;
+    }
 }

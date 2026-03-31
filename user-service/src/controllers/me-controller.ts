@@ -27,4 +27,19 @@ export class MeController {
             next(err);
         }
     }
+
+    static async delete(req: Request, res: Response, next: NextFunction) {
+        try {
+            const auth = getAuth(req);
+            if (!auth) return next(AppError.unauthorized('Unauthorized'));
+
+            await MeService.deleteMe(auth.userId);
+
+            return res.status(200).json({
+                message: 'Account deleted successfully',
+            });
+        } catch (err) {
+            next(err);
+        }
+    }
 }

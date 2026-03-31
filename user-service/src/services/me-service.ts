@@ -69,4 +69,18 @@ export class MeService {
         await user.save();
         return user.toJSON();
     }
+
+    static async deleteMe(userId: string) {
+        const user = await UserModel.findById(userId);
+        if (!user) throw AppError.notFound('User not found');
+
+        if (user.role === 'admin') {
+            const adminCount = await UserModel.countDocuments({ role: 'admin' });
+            if (adminCount <= 1) {
+                throw AppError.forbidden('Cannot delete the last remaining admin');
+            }
+        }
+
+        await user.deleteOne();
+    }
 }

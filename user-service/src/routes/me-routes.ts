@@ -8,3 +8,4 @@ export const meRouter = Router();
 
 meRouter.get('/', requireAuth, MeController.me);
 meRouter.patch('/', requireAuth, validateBody(updateMeSchema), MeController.update);
+meRouter.delete('/', requireAuth, MeController.delete);

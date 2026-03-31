@@ -23,3 +23,10 @@ adminRouter.post(
     validateBody(roleChangeSchema),
     AdminController.demote,
 );
+
+adminRouter.delete(
+    '/users/:username',
+    requireAuth,
+    requireRole('admin'),
+    AdminController.deleteUser,
+);

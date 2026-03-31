@@ -52,4 +52,23 @@ export class AdminController {
             next(err);
         }
     }
+
+    static async deleteUser(req: Request, res: Response, next: NextFunction) {
+        try {
+            const auth = getAuth(req);
+            if (!auth) return next(AppError.unauthorized('Unauthorized'));
+
+            const username = req.params.username;
+            if (typeof username !== 'string') {
+                return next(AppError.badRequest('Invalid username parameter'));
+            }
+            const deletedUsername = await AdminService.deleteUser(auth.userId, username);
+
+            return res.status(200).json({
+                message: `User '${deletedUsername}' deleted successfully`,
+            });
+        } catch (err) {
+            next(err);
+        }
+    }
 }
