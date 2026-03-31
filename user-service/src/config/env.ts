@@ -5,4 +5,7 @@ export const config = {
         uri: process.env.MONGO_URI ?? '',
         dbName: process.env.MONGO_DB_NAME ?? '',
     },
+    internal: {
+        serviceToken: process.env.INTERNAL_SERVICE_TOKEN ?? '',
+    },
 };

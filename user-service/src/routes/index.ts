@@ -4,6 +4,7 @@ import { authRouter } from './auth-routes';
 import { homeRouter } from './home-routes';
 import { adminRouter } from './admin-routes';
 import { meRouter } from './me-routes';
+import { internalRouter } from './internal-routes';
 
 export function registerRoutes(app: Express) {
     app.use('/health', healthRouter);
@@ -11,4 +12,5 @@ export function registerRoutes(app: Express) {
     app.use('/home', homeRouter);
     app.use('/admin', adminRouter);
     app.use('/me', meRouter);
+    app.use('/internal', internalRouter);
 }
