@@ -1,12 +1,12 @@
 # Matching Service
 
-The matching service owns the in-memory queue used to pair users by topic and difficulty. It also verifies the caller through `user-service` before allowing queue operations.
+The matching service owns the MongoDB-backed queue used to pair users by topic and difficulty. It also verifies the caller through `user-service` before allowing queue operations.
 
 ## What it does
 
 - Accepts authenticated join and leave requests.
-- Tracks queue status for each user.
-- Produces a match when a compatible waiting user is found.
+- Tracks queue status for each user in MongoDB.
+- Produces a match when a compatible waiting user is found and stores it in MongoDB.
 - Exposes a queue snapshot for debugging and admin-style inspection.
 - Resolves access tokens through `user-service` instead of verifying JWTs locally.
 
@@ -222,7 +222,9 @@ Routes except health are protected by `requireAuth`. The request `userId` must m
 - `leaveQueue(userId)` removes a user from whichever queue they are in.
 - `getQueueStatus(userId, nowMs)` returns `matched`, `queued`, `timed_out`, or `not_found` for a user.
 - `listQueuedUsers(nowMs)` returns a flattened snapshot of all queued users.
-- `resetMatchingState()` clears the in-memory matching state and is mainly used by tests.
+- `resetMatchingState()` clears the active matching repository and is mainly used by tests.
+- `setMatchingRepository(repository)` swaps the active repository implementation, which lets tests use an in-memory store.
+- `createInMemoryMatchingRepository()` creates the in-memory repository used by tests.
 - `pickBestWaitingUserIndex(queue, joiningUser, nowMs)` selects the best candidate from one queue using the stage and FIFO rules.
 
 The internal helper functions below support the queue policy and are useful when reading or testing the matching behavior:
@@ -253,7 +255,7 @@ If multiple candidates qualify, the service prefers the lowest stage first and t
 
 ## Testing Notes
 
-The matching queue is in memory, so it resets when the process restarts. Use `resetMatchingState()` in tests when you need a clean slate.
+The production matching queue persists in MongoDB. Tests can still swap in an isolated in-memory repository with `setMatchingRepository(createInMemoryMatchingRepository())` when they need a clean slate without touching the live database.
 
 ## Notes
 

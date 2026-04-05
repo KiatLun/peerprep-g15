@@ -1,15 +1,154 @@
 import { randomUUID } from 'crypto';
+import { MatchModel, QueueModel, matchDocumentToResult, queueDocumentToEntry } from '../models/matching-persistence-model';
 import type { MatchRequest, MatchResult, QueueEntry, QueueStatus } from '../models/matching-model';
 
-const queueByCriteria = new Map<string, QueueEntry[]>();
-const matchByUserId = new Map<string, MatchResult>();
+export interface MatchingRepository {
+    clear(): Promise<void>;
+    purgeTimedOut(nowMs: number): Promise<void>;
+    getMatchByUserId(userId: string): Promise<MatchResult | null>;
+    getQueuedUserEntry(userId: string): Promise<QueueEntry | null>;
+    listQueuedUsers(nowMs: number): Promise<QueueEntry[]>;
+    enqueue(entry: QueueEntry): Promise<void>;
+    removeQueuedUser(userId: string): Promise<QueueEntry | null>;
+    saveMatch(match: MatchResult): Promise<void>;
+}
+
+const TOPIC_EXPANSION_WAIT_MS = 15_000;
+const FIFO_EXPANSION_WAIT_MS = 30_000;
+const QUEUE_TIMEOUT_MS = 60_000;
+
+class MongoMatchingRepository implements MatchingRepository {
+    async clear() {
+        await Promise.all([QueueModel.deleteMany({}), MatchModel.deleteMany({})]);
+    }
+
+    async purgeTimedOut(nowMs: number) {
+        const cutoff = new Date(nowMs - QUEUE_TIMEOUT_MS);
+        await QueueModel.deleteMany({ joinedAt: { $lte: cutoff } });
+    }
+
+    async getMatchByUserId(userId: string) {
+        const document = await MatchModel.findOne({ userIds: userId }).lean();
+        return document ? matchDocumentToResult(document) : null;
+    }
+
+    async getQueuedUserEntry(userId: string) {
+        const document = await QueueModel.findOne({ userId }).lean();
+        return document ? queueDocumentToEntry(document) : null;
+    }
+
+    async listQueuedUsers(nowMs: number) {
+        await this.purgeTimedOut(nowMs);
+        const documents = await QueueModel.find({}).sort({ joinedAt: 1 }).lean();
+        return documents.map((document) => queueDocumentToEntry(document));
+    }
+
+    async enqueue(entry: QueueEntry) {
+        await QueueModel.create({
+            ...entry,
+            topic: entry.topic.trim(),
+            joinedAt: new Date(entry.joinedAt),
+        });
+    }
+
+    async removeQueuedUser(userId: string) {
+        const document = await QueueModel.findOneAndDelete({ userId }).lean();
+        return document ? queueDocumentToEntry(document) : null;
+    }
+
+    async saveMatch(match: MatchResult) {
+        await MatchModel.create({
+            ...match,
+            createdAt: new Date(match.createdAt),
+        });
+    }
+}
+
+class InMemoryMatchingRepository implements MatchingRepository {
+    private readonly queueByCriteria = new Map<string, QueueEntry[]>();
+
+    private readonly matchByUserId = new Map<string, MatchResult>();
+
+    async clear() {
+        this.queueByCriteria.clear();
+        this.matchByUserId.clear();
+    }
+
+    async purgeTimedOut(nowMs: number) {
+        for (const [criteriaKey, queue] of this.queueByCriteria.entries()) {
+            const activeQueue = queue.filter((entry) => !isTimedOut(entry, nowMs));
+            if (activeQueue.length === 0) {
+                this.queueByCriteria.delete(criteriaKey);
+                continue;
+            }
+
+            this.queueByCriteria.set(criteriaKey, activeQueue);
+        }
+    }
+
+    async getMatchByUserId(userId: string) {
+        return this.matchByUserId.get(userId) ?? null;
+    }
+
+    async getQueuedUserEntry(userId: string) {
+        for (const queue of this.queueByCriteria.values()) {
+            const entry = queue.find((item) => item.userId === userId);
+            if (entry) {
+                return entry;
+            }
+        }
+
+        return null;
+    }
+
+    async listQueuedUsers(nowMs: number) {
+        await this.purgeTimedOut(nowMs);
+        return Array.from(this.queueByCriteria.values()).flat();
+    }
+
+    async enqueue(entry: QueueEntry) {
+        const criteriaKey = createCriteriaKey(entry.topic, entry.difficulty);
+        const existingQueue = this.queueByCriteria.get(criteriaKey) ?? [];
+        existingQueue.push(entry);
+        this.queueByCriteria.set(criteriaKey, existingQueue);
+    }
+
+    async removeQueuedUser(userId: string) {
+        for (const [criteriaKey, queue] of this.queueByCriteria.entries()) {
+            const index = queue.findIndex((entry) => entry.userId === userId);
+            if (index >= 0) {
+                const [entry] = queue.splice(index, 1);
+                if (queue.length === 0) {
+                    this.queueByCriteria.delete(criteriaKey);
+                } else {
+                    this.queueByCriteria.set(criteriaKey, queue);
+                }
+
+                return entry;
+            }
+        }
+
+        return null;
+    }
+
+    async saveMatch(match: MatchResult) {
+        this.matchByUserId.set(match.userIds[0], match);
+        this.matchByUserId.set(match.userIds[1], match);
+    }
+}
+
+let repository: MatchingRepository = new MongoMatchingRepository();
+
+export function createInMemoryMatchingRepository() {
+    return new InMemoryMatchingRepository();
+}
 
 // Matching policy: t = 0 exact match, t = 15s topic-only expansion,
 // t = 30s FIFO fallback expansion, t = 60s give up and timeout.
 // Within each stage, longest-waiting eligible user is selected for fairness.
-const TOPIC_EXPANSION_WAIT_MS = 15_000;
-const FIFO_EXPANSION_WAIT_MS = 30_000;
-const QUEUE_TIMEOUT_MS = 60_000;
+export function setMatchingRepository(nextRepository?: MatchingRepository) {
+    repository = nextRepository ?? new MongoMatchingRepository();
+}
 
 // Normalizes topic+difficulty into a stable bucket key for queue grouping.
 function createCriteriaKey(topic: string, difficulty: string) {
@@ -27,18 +166,6 @@ function isTimedOut(entry: QueueEntry, nowMs: number) {
 }
 
 // Removes timed-out users from all queues so they are never considered for matching.
-function purgeTimedOutEntries(nowMs: number) {
-    for (const [criteriaKey, queue] of queueByCriteria.entries()) {
-        const activeQueue = queue.filter((entry) => !isTimedOut(entry, nowMs));
-        if (activeQueue.length === 0) {
-            queueByCriteria.delete(criteriaKey);
-            continue;
-        }
-
-        queueByCriteria.set(criteriaKey, activeQueue);
-    }
-}
-
 // Assigns candidate stage: 0 exact match, 1 topic-only after wait, 2 FIFO fallback after longer wait.
 function getMatchStage(joiningUser: QueueEntry, candidate: QueueEntry, nowMs: number) {
     const sameTopic =
@@ -94,63 +221,32 @@ export function pickBestWaitingUserIndex(
 }
 
 // Removes a specific user from whichever criteria queue they are currently waiting in.
-function findQueuedUser(userId: string) {
-    for (const [criteriaKey, queue] of queueByCriteria.entries()) {
-        const index = queue.findIndex((entry) => entry.userId === userId);
-        if (index >= 0) {
-            const [entry] = queue.splice(index, 1);
-            if (queue.length === 0) {
-                queueByCriteria.delete(criteriaKey);
-            } else {
-                queueByCriteria.set(criteriaKey, queue);
-            }
-            return entry;
-        }
-    }
-
-    return null;
-}
-
-// Finds a queued entry for a specific user without mutating queue state.
-function getQueuedUserEntry(userId: string) {
-    for (const queue of queueByCriteria.values()) {
-        const entry = queue.find((item) => item.userId === userId);
-        if (entry) {
-            return entry;
-        }
-    }
-
-    return null;
-}
-
 // Finds and removes the best eligible waiting user across all queues.
-function findBestWaitingCandidate(joiningUser: QueueEntry, nowMs: number) {
+function findBestWaitingCandidate(queue: QueueEntry[], joiningUser: QueueEntry, nowMs: number) {
     let selectedCriteriaKey: string | null = null;
     let selectedIndex = -1;
     let selectedStage: number | null = null;
     let selectedJoinedAt = Number.POSITIVE_INFINITY;
 
-    for (const [criteriaKey, queue] of queueByCriteria.entries()) {
-        for (let index = 0; index < queue.length; index += 1) {
-            const candidate = queue[index];
-            if (candidate.userId === joiningUser.userId) {
-                continue;
-            }
+    for (let index = 0; index < queue.length; index += 1) {
+        const candidate = queue[index];
+        if (candidate.userId === joiningUser.userId) {
+            continue;
+        }
 
-            const stage = getMatchStage(joiningUser, candidate, nowMs);
-            if (stage === null) continue;
+        const stage = getMatchStage(joiningUser, candidate, nowMs);
+        if (stage === null) continue;
 
-            const joinedAtMs = new Date(candidate.joinedAt).getTime();
-            if (
-                selectedStage === null ||
-                stage < selectedStage ||
-                (stage === selectedStage && joinedAtMs < selectedJoinedAt)
-            ) {
-                selectedCriteriaKey = criteriaKey;
-                selectedIndex = index;
-                selectedStage = stage;
-                selectedJoinedAt = joinedAtMs;
-            }
+        const joinedAtMs = new Date(candidate.joinedAt).getTime();
+        if (
+            selectedStage === null ||
+            stage < selectedStage ||
+            (stage === selectedStage && joinedAtMs < selectedJoinedAt)
+        ) {
+            selectedCriteriaKey = createCriteriaKey(candidate.topic, candidate.difficulty);
+            selectedIndex = index;
+            selectedStage = stage;
+            selectedJoinedAt = joinedAtMs;
         }
     }
 
@@ -158,42 +254,31 @@ function findBestWaitingCandidate(joiningUser: QueueEntry, nowMs: number) {
         return undefined;
     }
 
-    const queue = queueByCriteria.get(selectedCriteriaKey);
-    if (!queue) return undefined;
-
-    const [selected] = queue.splice(selectedIndex, 1);
-    if (queue.length === 0) {
-        queueByCriteria.delete(selectedCriteriaKey);
-    } else {
-        queueByCriteria.set(selectedCriteriaKey, queue);
-    }
-
-    return selected;
+    return queue[selectedIndex];
 }
 
 // Attempts to match immediately from staged policy; otherwise enqueues the user.
-export function joinQueue(request: MatchRequest, nowMs = Date.now()) {
-    purgeTimedOutEntries(nowMs);
+export async function joinQueue(request: MatchRequest, nowMs = Date.now()) {
+    await repository.purgeTimedOut(nowMs);
 
-    const existingMatch = matchByUserId.get(request.userId);
+    const existingMatch = await repository.getMatchByUserId(request.userId);
     if (existingMatch) {
         return { state: 'matched' as const, match: existingMatch };
     }
 
-    const existingQueuedEntry = getQueuedUserEntry(request.userId);
+    const existingQueuedEntry = await repository.getQueuedUserEntry(request.userId);
     if (existingQueuedEntry) {
         return { state: 'queued' as const, entry: existingQueuedEntry };
     }
 
-    const criteriaKey = createCriteriaKey(request.topic, request.difficulty);
-    const existingQueue = queueByCriteria.get(criteriaKey) ?? [];
     const entry: QueueEntry = {
         ...request,
         topic: request.topic.trim(),
         joinedAt: new Date(nowMs).toISOString(),
     };
 
-    const waitingUser = findBestWaitingCandidate(entry, nowMs);
+    const queuedUsers = await repository.listQueuedUsers(nowMs);
+    const waitingUser = findBestWaitingCandidate(queuedUsers, entry, nowMs);
     if (waitingUser) {
         const match: MatchResult = {
             matchId: randomUUID(),
@@ -203,21 +288,20 @@ export function joinQueue(request: MatchRequest, nowMs = Date.now()) {
             createdAt: new Date(nowMs).toISOString(),
         };
 
-        matchByUserId.set(waitingUser.userId, match);
-        matchByUserId.set(entry.userId, match);
+        await repository.removeQueuedUser(waitingUser.userId);
+        await repository.saveMatch(match);
 
         return { state: 'matched' as const, match };
     }
 
-    existingQueue.push(entry);
-    queueByCriteria.set(criteriaKey, existingQueue);
+    await repository.enqueue(entry);
 
     return { state: 'queued' as const, entry };
 }
 
 // Removes a user from queue and reports whether anything was removed.
-export function leaveQueue(userId: string) {
-    const removed = findQueuedUser(userId);
+export async function leaveQueue(userId: string) {
+    const removed = await repository.removeQueuedUser(userId);
     if (!removed) {
         return false;
     }
@@ -226,8 +310,8 @@ export function leaveQueue(userId: string) {
 }
 
 // Returns matched/queued/not_found state for a given user.
-export function getQueueStatus(userId: string, nowMs = Date.now()): QueueStatus {
-    const match = matchByUserId.get(userId);
+export async function getQueueStatus(userId: string, nowMs = Date.now()): Promise<QueueStatus> {
+    const match = await repository.getMatchByUserId(userId);
     if (match) {
         return {
             userId,
@@ -236,30 +320,21 @@ export function getQueueStatus(userId: string, nowMs = Date.now()): QueueStatus 
         };
     }
 
-    for (const [criteriaKey, queue] of queueByCriteria.entries()) {
-        const index = queue.findIndex((item) => item.userId === userId);
-        if (index >= 0) {
-            const entry = queue[index];
-            if (isTimedOut(entry, nowMs)) {
-                queue.splice(index, 1);
-                if (queue.length === 0) {
-                    queueByCriteria.delete(criteriaKey);
-                } else {
-                    queueByCriteria.set(criteriaKey, queue);
-                }
-
-                return {
-                    userId,
-                    state: 'timed_out',
-                };
-            }
-
+    const entry = await repository.getQueuedUserEntry(userId);
+    if (entry) {
+        if (isTimedOut(entry, nowMs)) {
+            await repository.removeQueuedUser(userId);
             return {
                 userId,
-                state: 'queued',
-                entry,
+                state: 'timed_out',
             };
         }
+
+        return {
+            userId,
+            state: 'queued',
+            entry,
+        };
     }
 
     return {
@@ -269,13 +344,11 @@ export function getQueueStatus(userId: string, nowMs = Date.now()): QueueStatus 
 }
 
 // Flattens all criteria buckets into a single queue snapshot for debugging/admin views.
-export function listQueuedUsers(nowMs = Date.now()) {
-    purgeTimedOutEntries(nowMs);
-    return Array.from(queueByCriteria.values()).flat();
+export async function listQueuedUsers(nowMs = Date.now()) {
+    return repository.listQueuedUsers(nowMs);
 }
 
 // Clears in-memory state for deterministic tests and local resets.
-export function resetMatchingState() {
-    queueByCriteria.clear();
-    matchByUserId.clear();
+export async function resetMatchingState() {
+    await repository.clear();
 }

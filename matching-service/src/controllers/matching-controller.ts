@@ -16,7 +16,7 @@ export class MatchingController {
         res.status(200).json({ status: 'ok', service: 'matching-service' });
     }
 
-    static join(req: Request, res: Response, next: NextFunction) {
+    static async join(req: Request, res: Response, next: NextFunction) {
         try {
             const auth = (req as AuthenticatedRequest).auth;
             const userId = getRequiredString(req.body?.userId);
@@ -41,7 +41,7 @@ export class MatchingController {
                 });
             }
 
-            const result = joinQueue({
+            const result = await joinQueue({
                 userId,
                 topic,
                 difficulty: difficulty as 'easy' | 'medium' | 'hard',
@@ -65,7 +65,7 @@ export class MatchingController {
         }
     }
 
-    static leave(req: Request, res: Response, next: NextFunction) {
+    static async leave(req: Request, res: Response, next: NextFunction) {
         try {
             const auth = (req as AuthenticatedRequest).auth;
             const userId = getRequiredString(req.body?.userId);
@@ -82,7 +82,7 @@ export class MatchingController {
                 });
             }
 
-            const removed = leaveQueue(userId);
+            const removed = await leaveQueue(userId);
             if (!removed) {
                 return res.status(404).json({
                     message: 'User is not in queue',
@@ -97,7 +97,7 @@ export class MatchingController {
         }
     }
 
-    static status(req: Request, res: Response, next: NextFunction) {
+    static async status(req: Request, res: Response, next: NextFunction) {
         try {
             const auth = (req as AuthenticatedRequest).auth;
             const userId = getRequiredString(req.params.userId || req.query.userId);
@@ -114,16 +114,16 @@ export class MatchingController {
                 });
             }
 
-            const status = getQueueStatus(userId);
+            const status = await getQueueStatus(userId);
             return res.status(200).json(status);
         } catch (err) {
             next(err);
         }
     }
 
-    static queue(_req: Request, res: Response) {
+    static async queue(_req: Request, res: Response) {
         return res.status(200).json({
-            queuedUsers: listQueuedUsers(),
+            queuedUsers: await listQueuedUsers(),
         });
     }
 }

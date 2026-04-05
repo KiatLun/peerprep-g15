@@ -7,8 +7,10 @@ import {
     getQueueStatus,
     joinQueue,
     listQueuedUsers,
+    createInMemoryMatchingRepository,
     pickBestWaitingUserIndex,
     resetMatchingState,
+    setMatchingRepository,
 } from '../services/matching-service';
 import { setAuthServiceFetch } from '../services/auth-service.js';
 import type { QueueEntry } from '../models/matching-model';
@@ -104,6 +106,7 @@ async function request(
 test.before(async () => {
     // Route auth-service lookups to our in-memory mock and boot the app on a random port.
     setAuthServiceFetch(mockAuthResolveFetch);
+    setMatchingRepository(createInMemoryMatchingRepository());
 
     const app = createApp();
     server = app.listen(0);
@@ -126,11 +129,12 @@ test.after(async () => {
     });
 
     setAuthServiceFetch();
+    setMatchingRepository();
 });
 
-test.beforeEach(() => {
+test.beforeEach(async () => {
     // Keep tests isolated by clearing queue/match state and token fixtures per test.
-    resetMatchingState();
+    await resetMatchingState();
     accessTokens.clear();
 });
 
@@ -409,7 +413,7 @@ test('edge case fixed: duplicate join from the same user is idempotent', async (
     assert.equal(firstJoin.status, 202);
     assert.equal(secondJoin.status, 202);
 
-    const queue = listQueuedUsers();
+    const queue = await listQueuedUsers();
     const dupEntries = queue.filter((entry) => entry.userId === 'user-dup');
     assert.equal(dupEntries.length, 1);
 });
@@ -498,7 +502,7 @@ test('edge case: matched state cannot be cleared through leave endpoint', async 
     );
     assert.equal(left.status, 404);
 
-    const status = getQueueStatus('user-stale-a');
+    const status = await getQueueStatus('user-stale-a');
     assert.equal(status.state, 'matched');
 });
 
@@ -578,9 +582,9 @@ test('edge case: in-memory queue state is lost after reset (restart simulation)'
     });
 });
 
-test('queued user times out after 1 minute and is removed from queue', () => {
+test('queued user times out after 1 minute and is removed from queue', async () => {
     const joinedAtMs = new Date('2026-04-04T10:00:00.000Z').getTime();
-    joinQueue(
+    await joinQueue(
         {
             userId: 'user-timeout',
             topic: 'graphs',
@@ -589,20 +593,20 @@ test('queued user times out after 1 minute and is removed from queue', () => {
         joinedAtMs,
     );
 
-    const timedOutStatus = getQueueStatus('user-timeout', joinedAtMs + 60_000);
+    const timedOutStatus = await getQueueStatus('user-timeout', joinedAtMs + 60_000);
     assert.equal(timedOutStatus.state, 'timed_out');
 
-    const queueAfterTimeout = listQueuedUsers(joinedAtMs + 60_000);
+    const queueAfterTimeout = await listQueuedUsers(joinedAtMs + 60_000);
     assert.equal(queueAfterTimeout.length, 0);
 
-    const statusAfterRemoval = getQueueStatus('user-timeout', joinedAtMs + 60_001);
+    const statusAfterRemoval = await getQueueStatus('user-timeout', joinedAtMs + 60_001);
     assert.equal(statusAfterRemoval.state, 'not_found');
 });
 
-test('expired queued users are never matched with new joiners', () => {
+test('expired queued users are never matched with new joiners', async () => {
     const baseTimeMs = new Date('2026-04-04T11:00:00.000Z').getTime();
 
-    const firstJoin = joinQueue(
+    const firstJoin = await joinQueue(
         {
             userId: 'user-expired',
             topic: 'arrays',
@@ -612,7 +616,7 @@ test('expired queued users are never matched with new joiners', () => {
     );
     assert.equal(firstJoin.state, 'queued');
 
-    const secondJoin = joinQueue(
+    const secondJoin = await joinQueue(
         {
             userId: 'user-fresh',
             topic: 'arrays',
@@ -622,7 +626,7 @@ test('expired queued users are never matched with new joiners', () => {
     );
 
     assert.equal(secondJoin.state, 'queued');
-    const currentQueue = listQueuedUsers(baseTimeMs + 60_000);
+    const currentQueue = await listQueuedUsers(baseTimeMs + 60_000);
     assert.equal(currentQueue.length, 1);
     assert.equal(currentQueue[0].userId, 'user-fresh');
 });
