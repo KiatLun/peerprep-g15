@@ -1,14 +1,13 @@
-import axios, { type AxiosInstance } from 'axios';
+import axios from 'axios';
 import authAxios from './authAxios';
 import { useNavigate } from 'react-router';
 
-const questionAxios: AxiosInstance = axios.create({
-    baseURL: 'http://localhost:3002',
-    timeout: 10000,
+const userAxios = axios.create({
+    baseURL: 'http://localhost:3001',
     withCredentials: true,
 });
 
-questionAxios.interceptors.request.use((config) => {
+userAxios.interceptors.request.use((config) => {
     const accessToken = localStorage.getItem('accessToken');
 
     if (accessToken) {
@@ -18,24 +17,23 @@ questionAxios.interceptors.request.use((config) => {
     return config;
 });
 
-questionAxios.interceptors.response.use(
+userAxios.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
 
-        if (error.response?.status === 500 && !originalRequest._retry) {
+        if (error.response?.status === 401 && !originalRequest._retry) {
             originalRequest._retry = true;
 
             try {
                 const refreshResponse = await authAxios.post('/auth/refresh');
-
                 const newAccessToken = refreshResponse.data.accessToken;
+
                 localStorage.setItem('accessToken', newAccessToken);
 
                 originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-                console.log('Token refreshed, retrying original request with new token');
 
-                return questionAxios(originalRequest);
+                return userAxios(originalRequest);
             } catch (refreshError) {
                 localStorage.removeItem('accessToken');
                 localStorage.removeItem('name');
@@ -49,4 +47,4 @@ questionAxios.interceptors.response.use(
     },
 );
 
-export default questionAxios;
+export default userAxios;

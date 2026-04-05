@@ -54,15 +54,9 @@ const AddQuestion = () => {
         }
     };
 
-    const handleLogout = () => {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('name');
-        navigate('/');
-    };
-
     return (
         <div>
-            <NavBar name={name} handleLogout={handleLogout} />
+            <NavBar name={name} />
             <div className="d-flex min-vh-100 bg-dark text-white">
                 <div
                     className="d-flex flex-column flex-shrink-0 p-4"
