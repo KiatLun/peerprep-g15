@@ -25,7 +25,7 @@ The service reads these variables from the environment:
 From the `matching-service` folder:
 
 ```bash
-npm run dev 
+npm run dev
 npm run test:api
 ```
 
@@ -34,6 +34,7 @@ npm run test:api
 All routes are mounted under `/matching`.
 
 ### Health Check
+
 `GET /matching/health` - Health check.
 
 Use this for uptime checks or container health probes. No auth header is required.
@@ -48,12 +49,13 @@ Response:
 
 ```json
 {
-  "status": "ok",
-  "service": "matching-service"
+    "status": "ok",
+    "service": "matching-service"
 }
 ```
 
 ### Join
+
 `POST /matching/join` - Join the queue or return a match.
 
 Use this when a user clicks "find match" or when the frontend wants to place the user into the matchmaking queue. The request must use the authenticated user's own `userId`.
@@ -67,9 +69,9 @@ Body:
 
 ```json
 {
-  "userId": "user-123",
-  "topic": "arrays",
-  "difficulty": "easy"
+    "userId": "user-123",
+    "topic": "arrays",
+    "difficulty": "easy"
 }
 ```
 
@@ -100,6 +102,7 @@ Duplicate join behavior (idempotency):
 - The service does not create duplicate queue entries for the same user and does not allow self-match (`userId` matched to itself).
 
 ### Leave
+
 `POST /matching/leave` - Remove a user from the queue.
 
 Use this when the user cancels matchmaking and should no longer wait in the queue.
@@ -113,7 +116,7 @@ Body:
 
 ```json
 {
-  "userId": "user-123"
+    "userId": "user-123"
 }
 ```
 
@@ -133,9 +136,8 @@ Responses:
 - `403 Forbidden` when the `userId` does not match the authenticated user.
 - `404 Not Found` when the user is not currently queued.
 
-
-
 ### Status
+
 `GET /matching/status/:userId` - Get queue status for a user.
 
 Use this to check whether the authenticated user is queued, matched, timed out, or not found.
@@ -158,6 +160,7 @@ Responses:
 - `403 Forbidden` when the `userId` does not match the authenticated user.
 
 ### Queue
+
 `GET /matching/queue` - List all queued users.
 
 Use this for debugging or admin-style inspection of the current queue snapshot.
@@ -173,7 +176,7 @@ Response:
 
 ```json
 {
-  "queuedUsers": []
+    "queuedUsers": []
 }
 ```
 

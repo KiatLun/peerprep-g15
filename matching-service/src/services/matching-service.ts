@@ -1,5 +1,10 @@
 import { randomUUID } from 'crypto';
-import { MatchModel, QueueModel, matchDocumentToResult, queueDocumentToEntry } from '../models/matching-persistence-model';
+import {
+    MatchModel,
+    QueueModel,
+    matchDocumentToResult,
+    queueDocumentToEntry,
+} from '../models/matching-persistence-model';
 import type { MatchRequest, MatchResult, QueueEntry, QueueStatus } from '../models/matching-model';
 
 export interface MatchingRepository {
