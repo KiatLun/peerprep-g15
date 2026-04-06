@@ -20,21 +20,6 @@ jobs:
             - run: npm ci
             - run: npm run format:check
 
-            - name: Add summary
-              if: success()
-              run: |
-                  echo "## formatting summary" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "- Formatting: passed" >> $GITHUB_STEP_SUMMARY
-
-            - name: Add failure summary
-              if: failure()
-              run: |
-                  echo "## formatting summary" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "- Formatting: failed" >> $GITHUB_STEP_SUMMARY
-                  echo "- Check the logs for details" >> $GITHUB_STEP_SUMMARY
-
     user-service:
         runs-on: ubuntu-latest
         defaults:
@@ -53,22 +38,6 @@ jobs:
             - run: npm ci
             - run: npm run build
             - run: npm test
-
-            - name: Add summary
-              if: success()
-              run: |
-                  echo "## user-service summary" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "- Build: passed" >> $GITHUB_STEP_SUMMARY
-                  echo "- Tests: passed" >> $GITHUB_STEP_SUMMARY
-
-            - name: Add failure summary
-              if: failure()
-              run: |
-                  echo "## user-service summary" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "- Build and/or tests: failed" >> $GITHUB_STEP_SUMMARY
-                  echo "- Check the logs for details" >> $GITHUB_STEP_SUMMARY
 
     question-service:
         runs-on: ubuntu-latest
@@ -89,22 +58,6 @@ jobs:
             - run: npm run build
             - run: npm test
 
-            - name: Add summary
-              if: success()
-              run: |
-                  echo "## question-service summary" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "- Build: passed" >> $GITHUB_STEP_SUMMARY
-                  echo "- Tests: passed" >> $GITHUB_STEP_SUMMARY
-
-            - name: Add failure summary
-              if: failure()
-              run: |
-                  echo "## question-service summary" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "- Build and/or tests: failed" >> $GITHUB_STEP_SUMMARY
-                  echo "- Check the logs for details" >> $GITHUB_STEP_SUMMARY
-
     collaboration-service:
         runs-on: ubuntu-latest
         defaults:
@@ -123,22 +76,6 @@ jobs:
             - run: npm ci
             - run: npm run build
             - run: npm test
-
-            - name: Add summary
-              if: success()
-              run: |
-                  echo "## collaboration-service summary" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "- Build: passed" >> $GITHUB_STEP_SUMMARY
-                  echo "- Tests: passed" >> $GITHUB_STEP_SUMMARY
-
-            - name: Add failure summary
-              if: failure()
-              run: |
-                  echo "## collaboration-service summary" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "- Build and/or tests: failed" >> $GITHUB_STEP_SUMMARY
-                  echo "- Check the logs for details" >> $GITHUB_STEP_SUMMARY
 
     matching-service:
         runs-on: ubuntu-latest
@@ -159,22 +96,6 @@ jobs:
             - run: npm run build
             - run: npm test
 
-            - name: Add summary
-              if: success()
-              run: |
-                  echo "## matching-service summary" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "- Build: passed" >> $GITHUB_STEP_SUMMARY
-                  echo "- Tests: passed" >> $GITHUB_STEP_SUMMARY
-
-            - name: Add failure summary
-              if: failure()
-              run: |
-                  echo "## matching-service summary" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "- Build and/or tests: failed" >> $GITHUB_STEP_SUMMARY
-                  echo "- Check the logs for details" >> $GITHUB_STEP_SUMMARY
-
     frontend:
         runs-on: ubuntu-latest
         defaults:
@@ -192,18 +113,3 @@ jobs:
 
             - run: npm ci
             - run: npm run build
-
-            - name: Add summary
-              if: success()
-              run: |
-                  echo "## frontend summary" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "- Build: passed" >> $GITHUB_STEP_SUMMARY
-
-            - name: Add failure summary
-              if: failure()
-              run: |
-                  echo "## frontend summary" >> $GITHUB_STEP_SUMMARY
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "- Build: failed" >> $GITHUB_STEP_SUMMARY
-                  echo "- Check the logs for details" >> $GITHUB_STEP_SUMMARY
