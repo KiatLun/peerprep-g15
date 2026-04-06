@@ -23,10 +23,13 @@ export function initSocket(server: http.Server) {
         console.log('user connected:', socket.id);
 
         // user joins a room
-        socket.on('join-room', async (roomId: string, userId: string) => {
+        socket.on('join-room', async (roomId: string, userId: string, username: string) => {
             socket.join(roomId);
             socket.data.roomId = roomId;
             socket.data.userId = userId;
+            socket.data.username = username;
+
+            socket.to(roomId).emit('partner-info', { userId, username });
 
             // cancel disconnect timer if user reconnected
             if (disconnectTimers.has(userId)) {
@@ -142,6 +145,31 @@ export function initSocket(server: http.Server) {
                 runCodeTimers.set(roomId, timer);
             },
         );
+
+        socket.on('submit-code', async (roomId: string, userId: string, code: string, language: string) => {
+            const session = await getSession(roomId);
+            if (!session || session.status !== 'active') return;
+            if (!session.userIds.includes(userId)) return;
+
+            try {
+                io.to(roomId).emit('code-executing');
+                const result = await executeCode(roomId, code, language);
+
+                // TODO: compare result.stdout with expected output from question service
+                // For now, just send the result and let frontend decide
+
+                const passed = result.status === 'Accepted' && !result.stderr;
+                
+                io.to(roomId).emit('submit-result', {
+                    stdout: result.stdout,
+                    stderr: result.stderr,
+                    status: result.status,
+                    passed: passed,
+                });
+            } catch (err) {
+                io.to(roomId).emit('code-error', { message: 'Execution failed' });
+            }
+        });
 
         socket.on('leave-session', async (roomId: string, userId: string) => {
             await endSession(roomId); // call service directly
