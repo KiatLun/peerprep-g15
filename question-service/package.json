@@ -8,6 +8,7 @@
         "start": "node dist/server.js",
         "reset:questions": "tsx src/scripts/reset-questions.ts",
         "seed:questions": "tsx src/scripts/seed-questions.ts"
+        "test": "echo \"No tests yet\""
     },
     "keywords": [],
     "author": "",
