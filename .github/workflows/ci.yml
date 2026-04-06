@@ -28,7 +28,7 @@ jobs:
                 service:
                     - user-service
                     - question-service
-                    - collab-service
+                    - collaboration-service
                     - matching-service
 
         defaults:
@@ -52,7 +52,7 @@ jobs:
         runs-on: ubuntu-latest
         defaults:
             run:
-                working-directory: frontend
+                working-directory: frontend/peerprep-g15
 
         steps:
             - uses: actions/checkout@v4
