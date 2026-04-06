@@ -3,13 +3,7 @@ import { HouseFill, FileTextFill, PeopleFill, GearFill } from 'react-bootstrap-i
 import { useNavigate } from 'react-router';
 import NavBar from '../components/NavBar.tsx';
 import questionAxios from '../questionAxios.ts';
-import axios from 'axios';
 import { useState, useEffect, useMemo } from 'react';
-
-type Stat = {
-    title: string;
-    value: number;
-};
 
 type Question = {
     questionId: number;
@@ -27,22 +21,17 @@ type User = {
 const Admin = () => {
     const navigate = useNavigate();
     const name = localStorage.getItem('name') || 'Admin';
-    const accessToken = localStorage.getItem('accessToken') || '';
-    const handleLogout = () => {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('name');
-        navigate('/');
-    };
+    // const accessToken = localStorage.getItem('accessToken') || '';
 
     const [questions, setQuestions] = useState<Question[]>([]);
-    const [users, setUsers] = useState<User[]>([]);
+    const [users] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchDashboardData = async () => {
         try {
             // const [questionResponse, userResponse] = await Promise.all([
             //     questionAxios.get('/questions'),
-            //     axios.get('http://localhost:3001/users', {
+            //     axios.get('http://localhost:3001/admin/users', {
             //         headers: {
             //             Authorization: `Bearer ${accessToken}`,
             //         },
@@ -88,7 +77,7 @@ const Admin = () => {
         const uniqueCategories = new Set<string>();
 
         questions.forEach((q) => {
-            q.categories?.forEach((cat) => uniqueCategories.add(cat));
+            q.category?.forEach((cat) => uniqueCategories.add(cat));
         });
 
         return uniqueCategories.size;
@@ -107,7 +96,7 @@ const Admin = () => {
 
     return (
         <div>
-            <NavBar name={name} handleLogout={handleLogout} />
+            <NavBar name={name} />
             <div className="d-flex min-vh-100 bg-dark text-white">
                 <div
                     className="d-flex flex-column flex-shrink-0 p-4"

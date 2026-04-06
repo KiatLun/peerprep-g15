@@ -1,7 +1,22 @@
 import arrows from '../assets/arrows.svg';
 import avatar from '../assets/avatar.svg';
+import { useNavigate } from 'react-router';
+import authAxios from '../authAxios';
 
-const NavBar = ({ name, handleLogout }: { name: string; handleLogout: () => void }) => {
+const NavBar = ({ name }: { name: string }) => {
+    const navigate = useNavigate();
+    const handleLogout = async () => {
+        try {
+            await authAxios.post('/auth/logout');
+        } catch (error) {
+            console.error('Logout failed:', error);
+        } finally {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('name');
+            navigate('/');
+        }
+    };
+
     return (
         <nav className="navbar navbar-light" style={{ backgroundColor: '#bdbdbd' }}>
             <div className="container-fluid d-flex justify-content-between align-items-center">

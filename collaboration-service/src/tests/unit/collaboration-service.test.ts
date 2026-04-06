@@ -11,9 +11,10 @@ import {
 import { Session } from '../../models/collaboration-model';
 import axios from 'axios';
 
-// mock the Session model and axios
+// mock the Session model, axios, and uuid
 jest.mock('../../models/collaboration-model');
 jest.mock('axios');
+jest.mock('uuid', () => ({ v4: jest.fn(() => 'mocked-room-id') }));
 
 const mockedSession = jest.mocked(Session);
 const mockedAxios = jest.mocked(axios);
@@ -39,13 +40,15 @@ beforeEach(() => {
 
 describe('createSession', () => {
     it('should create and save a session', async () => {
-        const saveMock = jest.fn().mockResolvedValue(mockSession());
+        const saveMock = jest.fn().mockResolvedValue(mockSession({ roomId: 'mocked-room-id' }));
         mockedSession.mockImplementation(() => ({ save: saveMock }) as any);
 
-        const result = await createSession('room1', ['user1', 'user2'], 'q1');
+        const result = await createSession(['user1', 'user2'], 'q1');
 
         expect(saveMock).toHaveBeenCalled();
-        expect(result.roomId).toBe('room1');
+        expect(result.roomId).toBe('mocked-room-id');
+        expect(result.userIds).toEqual(['user1', 'user2']);
+        expect(result.questionId).toBe('q1');
     });
 });
 

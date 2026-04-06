@@ -1,142 +1,114 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import '../App.css';
-import arrows from '../assets/arrows.svg';
-import avatar from '../assets/avatar.svg';
-import axios from 'axios';
-import { useNavigate } from 'react-router';
+
+import questionAxios from '../questionAxios.ts';
+import NavBar from '../components/NavBar';
 
 type Question = {
     questionId: number;
     title: string;
     difficulty: string;
-    category: string;
+    categories: string[];
 };
 
 const Home = () => {
     const name = localStorage.getItem('name') || 'User';
-    const accessToken = localStorage.getItem('accessToken');
-    const navigate = useNavigate();
+
     const [difficulty, setDifficulty] = useState('');
     const [category, setCategory] = useState('');
-    const [filteredQuestions, setFilteredQuestions] = useState<Question[]>([]);
+    const [allQuestions, setAllQuestions] = useState<Question[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [isMatching, setIsMatching] = useState(false);
+    // const [matchedUser, setMatchedUser] = useState<string | null>(null);
+    const [matchingMessage, setMatchingMessage] = useState<string | null>(null);
 
-    const handleSearch = async (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        console.log('accessToken in Home:', accessToken);
+    useEffect(() => {
+        const fetchQuestions = async () => {
+            try {
+                setLoading(true);
+                setError('');
+
+                const response = await questionAxios.get('/questions');
+
+                const questions: Question[] = response.data.map((q: any) => ({
+                    questionId: q.questionId,
+                    title: q.title,
+                    difficulty: q.difficulty,
+                    categories: q.categories ?? [],
+                }));
+
+                setAllQuestions(questions);
+            } catch (err: any) {
+                console.error('Load questions error:', err);
+                setError(err.response?.data?.message || 'Failed to load questions.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchQuestions();
+    }, []);
+
+    const uniqueCategories = useMemo(() => {
+        return Array.from(
+            new Set(
+                allQuestions.flatMap((q) => q.categories.map((cat) => cat.trim()).filter(Boolean)),
+            ),
+        ).sort((a, b) => a.localeCompare(b));
+    }, [allQuestions]);
+
+    const filteredQuestions = useMemo(() => {
+        return allQuestions.filter((q) => {
+            const difficultyMatch = !difficulty || q.difficulty === difficulty;
+            const categoryMatch = !category || q.categories.includes(category);
+            return difficultyMatch && categoryMatch;
+        });
+    }, [allQuestions, difficulty, category]);
+
+    const handleFindMatch = async () => {
         try {
-            const response = await axios.get('http://localhost:3002/questions', {
-                params: {
-                    difficulty,
-                    category,
-                },
-                headers: {
-                    Authorization: `Bearer ${accessToken}`,
-                },
+            setIsMatching(true);
+            setMatchingMessage('Finding another user with the same category or difficulty...');
+
+            // Example API call
+            const response = await questionAxios.post('/matching/join', {
+                userId: localStorage.getItem('userId'),
+                topic: category,
+                difficulty,
             });
-            // console.log('Search response:', response.data);
-            // const qidList = response.data.map((q: any) => q.id);
-            // console.log('Question IDs:', qidList);
-            // setFilteredQuestions(response.data);
 
-            const questions = response.data.map((q: any) => ({
-                questionId: q.questionId,
-                title: q.title,
-                difficulty: q.difficulty,
-                category: q.categories?.join(', ') ?? '',
-            }));
+            if (response.data.state === 'matched') {
+                setMatchingMessage('Match found!');
+                setIsMatching(false);
+                return;
+            }
 
-            console.log('Mapped questions:', questions);
-            setFilteredQuestions(questions);
+            if (response.data.state === 'queued') {
+                setMatchingMessage('Waiting for another user to join...');
+            }
         } catch (err) {
-            console.error('Search error:', err);
+            console.error('Matching error:', err);
+            setMatchingMessage('Failed to start matching.');
+            setIsMatching(false);
         }
     };
 
-    const handleLogout = () => {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('name');
-        navigate('/');
-    };
     return (
         <>
-            <div>
-                <nav className="navbar navbar-light" style={{ backgroundColor: '#dedede' }}>
-                    <div className="container-fluid d-flex justify-content-between align-items-center">
-                        <a
-                            className="navbar-brand d-flex align-items-center"
-                            href="#"
-                            style={{ gap: '2px', marginBottom: 0 }}
-                        >
-                            <img src={arrows} width="30" height="30" alt="logo" />
-                            <span>PeerPrep</span>
-                        </a>
+            <NavBar name={name} />
 
-                        <div
-                            className="button-container dropdown d-flex align-items-center"
-                            style={{ marginRight: '1px', gap: '6px' }}
-                        >
-                            <img
-                                src={avatar}
-                                alt="avatar"
-                                width="30"
-                                height="30"
-                                style={{ borderRadius: '50%' }}
-                            />
-
-                            <button
-                                className="btn dropdown-toggle"
-                                type="button"
-                                id="userDropdown"
-                                data-bs-toggle="dropdown"
-                                aria-expanded="false"
-                                style={{
-                                    fontSize: '15px',
-                                    border: 'none',
-                                    background: 'transparent',
-                                    padding: 0,
-                                    color: 'black',
-                                }}
-                            >
-                                {name}
-                            </button>
-
-                            <ul
-                                className="dropdown-menu dropdown-menu-end"
-                                aria-labelledby="userDropdown"
-                            >
-                                <li>
-                                    <a className="dropdown-item" href="#">
-                                        Profile
-                                    </a>
-                                </li>
-                                <li>
-                                    <a className="dropdown-item" href="#">
-                                        Settings
-                                    </a>
-                                </li>
-                                <li>
-                                    <button
-                                        className="dropdown-item"
-                                        w-idth="100%"
-                                        onClick={handleLogout}
-                                        style={{ color: 'black' }}
-                                    >
-                                        Logout
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                </nav>
-            </div>
             <div className="container mt-4">
                 <h1>Welcome, {name}!</h1>
-                <p className="text-muted">Choose a difficulty and category to find questions</p>
+                <p className="text-muted">
+                    Choose a difficulty and category to match with another user
+                </p>
             </div>
+
             <div className="container py-5">
                 <div className="card shadow-sm mb-5">
                     <div className="card-body">
-                        <form onSubmit={handleSearch} className="row g-3">
+                        <div className="row g-3">
                             <div className="col-md-6">
                                 <label htmlFor="difficulty" className="form-label fw-bold">
                                     Difficulty
@@ -153,6 +125,7 @@ const Home = () => {
                                     <option value="Hard">Hard</option>
                                 </select>
                             </div>
+
                             <div className="col-md-6">
                                 <label htmlFor="category" className="form-label fw-bold">
                                     Category
@@ -164,23 +137,55 @@ const Home = () => {
                                     onChange={(e) => setCategory(e.target.value)}
                                 >
                                     <option value="">All</option>
-                                    <option value="Array">Array</option>
-                                    <option value="String">String</option>
-                                    <option value="Linked List">Linked List</option>
+                                    {uniqueCategories.map((cat) => (
+                                        <option key={cat} value={cat}>
+                                            {cat}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
                             <div className="center-button mt-4">
-                                <button type="submit" className="btn btn-secondary">
-                                    Search
+                                <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    onClick={handleFindMatch}
+                                    disabled={isMatching}
+                                >
+                                    {isMatching ? 'Matching...' : 'Find Match'}
                                 </button>
                             </div>
-                        </form>
+                        </div>
                     </div>
                 </div>
+
                 <div className="mt-4">
+                    <div
+                        className="alert alert-info d-flex align-items-center gap-3 mb-3"
+                        role="alert"
+                    >
+                        {isMatching && (
+                            <div
+                                className="spinner-border spinner-border-sm text-primary"
+                                role="status"
+                            >
+                                <span className="visually-hidden">Loading...</span>
+                            </div>
+                        )}
+
+                        <div>
+                            <strong>
+                                {isMatching ? 'Matching in progress...' : 'Ready to match'}
+                            </strong>
+                            <div>{matchingMessage}</div>
+                        </div>
+                    </div>
                     <h3 className="mb-3">Matching Questions</h3>
 
-                    {filteredQuestions.length === 0 ? (
+                    {loading ? (
+                        <p className="text-muted">Loading questions...</p>
+                    ) : error ? (
+                        <p className="text-danger">{error}</p>
+                    ) : filteredQuestions.length === 0 ? (
                         <p className="text-muted">No questions found.</p>
                     ) : (
                         <div className="row g-4">
@@ -193,7 +198,7 @@ const Home = () => {
                                                 Difficulty: {q.difficulty}
                                             </p>
                                             <p className="card-text text-muted">
-                                                Category: {q.category}
+                                                Category: {q.categories.join(', ')}
                                             </p>
                                             <button className="btn btn-outline-primary btn-sm">
                                                 View Question

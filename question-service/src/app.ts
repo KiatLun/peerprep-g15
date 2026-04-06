@@ -9,7 +9,7 @@ export function createApp() {
 
     app.use(
         cors({
-            origin: 'http://localhost:5173', // Allow frontend on this origin
+            origin: ['http://localhost:5173', 'http://localhost:4173'], // Allow frontend on this origin
             credentials: true, // Allow cookies (if using refresh tokens)
         }),
     );

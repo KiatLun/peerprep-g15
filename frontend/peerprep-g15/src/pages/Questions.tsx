@@ -3,7 +3,7 @@ import { HouseFill, FileTextFill, PeopleFill, GearFill } from 'react-bootstrap-i
 import { useNavigate } from 'react-router';
 import NavBar from '../components/NavBar.tsx';
 import { useState, useEffect } from 'react';
-import axios from '../questionAxios.ts';
+import questionAxios from '../questionAxios.ts';
 
 type Question = {
     questionId: number;
@@ -24,7 +24,7 @@ const Questions = () => {
     const fetchQuestions = async () => {
         setLoading(true);
         try {
-            const response = await axios.get('/questions', {
+            const response = await questionAxios.get('/questions', {
                 params: {
                     difficulty,
                     category,
@@ -68,7 +68,7 @@ const Questions = () => {
         if (!confirmed) return;
 
         try {
-            await axios.delete(`http://localhost:3002/questions/${questionId}`, {
+            await questionAxios.delete(`/questions/${questionId}`, {
                 headers: {
                     Authorization: `Bearer ${accessToken}`,
                 },
@@ -80,15 +80,9 @@ const Questions = () => {
         }
     };
 
-    const handleLogout = () => {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('name');
-        navigate('/');
-    };
-
     return (
         <div>
-            <NavBar name={name} handleLogout={handleLogout} />
+            <NavBar name={name} />
             <div className="d-flex min-vh-100 bg-dark text-white">
                 <div
                     className="d-flex flex-column flex-shrink-0 p-4"
