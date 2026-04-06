@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { useParams, useLocation } from 'react-router';
 import NavBar from '../components/NavBar';
 
 const COLLAB_URL = 'http://localhost:3004';
@@ -28,11 +29,14 @@ const Collab = () => {
     const name = params.get('name') || localStorage.getItem('name') || 'User';
 
     // TODO: these should come from matching service / route params
-    const roomId = 'test-room-1';
-    const questionTitle = 'Two Sum';
-    const questionDescription = 'Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target. You may assume that each input would have exactly one solution, and you may not use the same element twice.';
-    const questionDifficulty = 'Easy';
-    const questionCategories = ['Arrays', 'Hash Table'];
+    const { roomId } = useParams();
+    const location = useLocation();
+    const {
+        questionTitle = 'Unknown Question',
+        questionDescription = '',
+        questionDifficulty = 'Easy',
+        questionCategories = [],
+    } = location.state || {};
 
     const [socket, setSocket] = useState<Socket | null>(null);
     const [session, setSession] = useState<SessionState | null>(null);
@@ -51,6 +55,9 @@ const Collab = () => {
     const [partnerJoined, setPartnerJoined] = useState(false);
     const [partnerDisconnected, setPartnerDisconnected] = useState(false);
     const [disconnectTimer, setDisconnectTimer] = useState(30);
+    const [partnerName, setPartnerName] = useState('Partner');
+    const [submitResult, setSubmitResult] = useState<any>(null);
+    const [submitTimer, setSubmitTimer] = useState(10);
 
     // Connect socket
     useEffect(() => {
@@ -58,7 +65,7 @@ const Collab = () => {
         setSocket(s);
 
         s.on('connect', () => {
-            s.emit('join-room', roomId, userId);
+            s.emit('join-room', roomId, userId, name);
         });
 
         s.on('session-state', (session: SessionState) => {
@@ -107,12 +114,17 @@ const Collab = () => {
             setCodeResult(result);
         });
 
+        s.on('submit-result', (result: any) => {
+            setIsExecuting(false);
+            setSubmitResult(result);
+        });
+
         s.on('code-error', (err: any) => {
             setIsExecuting(false);
             setCodeResult({ error: err.message });
         });
 
-        s.on('session-ended', (data: { reason: string }) => {
+        s.on('session-ended',() => {
             setSessionStatus('ended');
         });
 
@@ -130,6 +142,10 @@ const Collab = () => {
         s.on('user-reconnected', () => {
             setPartnerDisconnected(false);
             setDisconnectTimer(30);
+        });
+
+        s.on('partner-info', (data: { userId: string; username: string }) => {
+            setPartnerName(data.username);
         });
 
         return () => {
@@ -177,6 +193,23 @@ const Collab = () => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
+    //Timer for successful submission before leaving session
+    useEffect(() => {
+        if (submitResult?.passed) {
+            const interval = setInterval(() => {
+                setSubmitTimer((prev) => {
+                    if (prev <= 1) {
+                        clearInterval(interval);
+                        socket?.emit('leave-session', roomId, userId);
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+            return () => clearInterval(interval);
+        }
+    }, [submitResult]);
+
     const handleLockIn = () => {
         if (!selectedLanguage || !socket) return;
         socket.emit('lock-in', roomId, userId, selectedLanguage);
@@ -191,6 +224,12 @@ const Collab = () => {
     const handleRunCode = () => {
         if (!socket) return;
         socket.emit('run-code', roomId, userId, code, selectedLanguage);
+    };
+
+    const handleSubmit = () => {
+        if (!socket) return;
+        socket.emit('submit-code', roomId, userId, code, selectedLanguage);
+        setIsExecuting(true);
     };
 
     const handleSendMessage = () => {
@@ -303,6 +342,7 @@ const Collab = () => {
                     <div className="d-flex align-items-center gap-3">
                         <span className="badge bg-success">Active</span>
                         <span className="fw-bold">{selectedLanguage.toUpperCase()}</span>
+                        <span className="text-muted">Partner: {partnerName}</span>
                     </div>
                     {partnerDisconnected && (
                         <div className="alert alert-warning text-center mb-0 rounded-0">
@@ -310,17 +350,24 @@ const Collab = () => {
                         </div>
                     )}
                     <div className="d-flex gap-2">
-                        <button
-                            className="btn btn-sm btn-success"
-                            onClick={handleRunCode}
-                            disabled={isExecuting}
-                        >
-                            {isExecuting ? 'Running...' : 'Run Code'}
-                        </button>
-                        <button className="btn btn-sm btn-danger" onClick={handleLeave}>
-                            Leave Session
-                        </button>
-                    </div>
+                    <button
+                        className="btn btn-sm btn-success"
+                        onClick={handleRunCode}
+                        disabled={isExecuting}
+                    >
+                        {isExecuting ? 'Running...' : 'Run Code'}
+                    </button>
+                    <button
+                        className="btn btn-sm btn-warning"
+                        onClick={handleSubmit}
+                        disabled={isExecuting}
+                    >
+                        Submit
+                    </button>
+                    <button className="btn btn-sm btn-danger" onClick={handleLeave}>
+                        Leave Session
+                    </button>
+                </div>
                 </div>
 
                 {/* Main content */}
@@ -331,7 +378,7 @@ const Collab = () => {
                             <span className={`badge ${questionDifficulty === 'Easy' ? 'bg-success' : questionDifficulty === 'Medium' ? 'bg-warning' : 'bg-danger'}`}>
                                 {questionDifficulty}
                             </span>
-                            {questionCategories.map((cat) => (
+                            {questionCategories.map((cat: string) => (
                                 <span key={cat} className="badge bg-secondary">{cat}</span>
                             ))}
                         </div>
@@ -407,6 +454,28 @@ const Collab = () => {
                     </div>
                 </div>
             </div>
+            {submitResult?.passed && (
+                <div className="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000 }}>
+                    <div className="card shadow-lg text-center" style={{ width: '400px' }}>
+                        <div className="card-body">
+                            <h3 className="text-success">Correct Answer!</h3>
+                            <p className="text-muted">Session will end in {submitTimer}s</p>
+                            <button className="btn btn-primary" onClick={handleLeave}>
+                                Leave Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {submitResult && !submitResult.passed && (
+                <div className="position-fixed bottom-0 start-50 translate-middle-x mb-3" style={{ zIndex: 1000 }}>
+                    <div className="alert alert-danger d-flex align-items-center gap-2 mb-0">
+                        <strong>Wrong Answer.</strong> Keep trying!
+                        <button className="btn-close" onClick={() => setSubmitResult(null)} />
+                    </div>
+                </div>
+            )}
         </>
     );
 };
