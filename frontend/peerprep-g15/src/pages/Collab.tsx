@@ -43,13 +43,6 @@ const Collab = () => {
 
     // TODO: these should come from matching service / route params
     const { roomId } = useParams();
-    const location = useLocation();
-    const {
-        questionTitle = 'Unknown Question',
-        questionDescription = '',
-        questionDifficulty = 'Easy',
-        questionCategories = [],
-    } = location.state || {};
 
     const [socket, setSocket] = useState<Socket | null>(null);
     const [_session, setSession] = useState<SessionState | null>(null);
@@ -433,19 +426,19 @@ const Collab = () => {
                     <div className="col-3 border-end p-3 overflow-auto" style={{ height: '100%' }}>
                         <div className="d-flex gap-2 mb-2 flex-wrap">
                             <span
-                                className={`badge ${(question?.difficulty ?? questionDifficulty) === 'Easy' ? 'bg-success' : (question?.difficulty ?? questionDifficulty) === 'Medium' ? 'bg-warning' : 'bg-danger'}`}
+                                className={`badge ${(question?.difficulty) === 'Easy' ? 'bg-success' : (question?.difficulty) === 'Medium' ? 'bg-warning' : 'bg-danger'}`}
                             >
-                                {question?.difficulty ?? questionDifficulty}
+                                {question?.difficulty}
                             </span>
-                            {(question?.categories ?? questionCategories).map((cat: string) => (
+                            {(question?.categories ?? []).map((cat: string) => (
                                 <span key={cat} className="badge bg-secondary">
                                     {cat}
                                 </span>
                             ))}
                         </div>
-                        <h5>{question?.title ?? questionTitle}</h5>
+                        <h5>{question?.title}</h5>
                         <p style={{ fontSize: '0.9rem' }}>
-                            {question?.description ?? questionDescription}
+                            {question?.description}
                         </p>
                         {question?.examples && question.examples.length > 0 && (
                             <div className="mt-3">
