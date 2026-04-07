@@ -2,8 +2,21 @@ import { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useParams, useLocation } from 'react-router';
 import NavBar from '../components/NavBar';
+import questionAxios from '../questionAxios';
 
 const COLLAB_URL = 'http://localhost:3004';
+
+type Question = {
+    questionId: number;
+    title: string;
+    description: string;
+    categories: string[];
+    difficulty: string;
+    sourceUrl?: string;
+    supportedLanguages: string[];
+    examples: { input: string; output: string; explanation?: string }[];
+    starterCode: Record<string, string>;
+};
 
 type Message = {
     senderId: string;
@@ -58,6 +71,7 @@ const Collab = () => {
     const [partnerName, setPartnerName] = useState('Partner');
     const [submitResult, setSubmitResult] = useState<any>(null);
     const [submitTimer, setSubmitTimer] = useState(10);
+    const [question, setQuestion] = useState<Question | null>(null);
 
     // Connect socket
     useEffect(() => {
@@ -73,6 +87,12 @@ const Collab = () => {
             setSessionStatus(session?.status || 'pending');
             if (session?.code) setCode(session.code);
             if (session?.language) setSelectedLanguage(session.language);
+            if (session?.questionId) {
+                questionAxios
+                    .get<Question>(`/questions/${session.questionId}`)
+                    .then((res) => setQuestion(res.data))
+                    .catch(() => {});
+            }
         });
 
         s.on('chat-history', (history: Message[]) => {
@@ -188,6 +208,14 @@ const Collab = () => {
         }
     }, [partnerDisconnected]);
 
+    // Pre-fill starter code when session becomes active (only if editor is empty)
+    useEffect(() => {
+        if (sessionStatus === 'active' && question && selectedLanguage && !code) {
+            const starter = question.starterCode?.[selectedLanguage];
+            if (starter) setCode(starter);
+        }
+    }, [sessionStatus, question, selectedLanguage]);
+
     // Auto scroll chat
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -282,7 +310,14 @@ const Collab = () => {
                                     </p>
 
                                     <div className="d-flex flex-column gap-2 mb-4">
-                                        {['python', 'javascript', 'java', 'cpp'].map((lang) => (
+                                        {(
+                                            question?.supportedLanguages ?? [
+                                                'python',
+                                                'javascript',
+                                                'java',
+                                                'cpp',
+                                            ]
+                                        ).map((lang) => (
                                             <button
                                                 key={lang}
                                                 className={`btn ${selectedLanguage === lang ? 'btn-primary' : 'btn-outline-primary'}`}
@@ -396,22 +431,48 @@ const Collab = () => {
                 <div className="row g-0" style={{ height: 'calc(100% - 50px)' }}>
                     {/* Left: Question */}
                     <div className="col-3 border-end p-3 overflow-auto" style={{ height: '100%' }}>
-                        <div className="d-flex gap-2 mb-2">
+                        <div className="d-flex gap-2 mb-2 flex-wrap">
                             <span
-                                className={`badge ${questionDifficulty === 'Easy' ? 'bg-success' : questionDifficulty === 'Medium' ? 'bg-warning' : 'bg-danger'}`}
+                                className={`badge ${(question?.difficulty ?? questionDifficulty) === 'Easy' ? 'bg-success' : (question?.difficulty ?? questionDifficulty) === 'Medium' ? 'bg-warning' : 'bg-danger'}`}
                             >
-                                {questionDifficulty}
+                                {question?.difficulty ?? questionDifficulty}
                             </span>
-                            {questionCategories.map((cat: string) => (
+                            {(question?.categories ?? questionCategories).map((cat: string) => (
                                 <span key={cat} className="badge bg-secondary">
                                     {cat}
                                 </span>
                             ))}
                         </div>
-                        <h5>{questionTitle}</h5>
-                        <p className="text-muted" style={{ fontSize: '0.9rem' }}>
-                            {questionDescription}
+                        <h5>{question?.title ?? questionTitle}</h5>
+                        <p style={{ fontSize: '0.9rem' }}>
+                            {question?.description ?? questionDescription}
                         </p>
+                        {question?.examples && question.examples.length > 0 && (
+                            <div className="mt-3">
+                                <strong style={{ fontSize: '0.9rem' }}>Examples</strong>
+                                {question.examples.map((ex, i) => (
+                                    <div
+                                        key={i}
+                                        className="bg-light border rounded p-2 mt-2"
+                                        style={{ fontSize: '0.8rem' }}
+                                    >
+                                        <div>
+                                            <span className="fw-semibold">Input:</span>{' '}
+                                            <code>{ex.input}</code>
+                                        </div>
+                                        <div>
+                                            <span className="fw-semibold">Output:</span>{' '}
+                                            <code>{ex.output}</code>
+                                        </div>
+                                        {ex.explanation && (
+                                            <div className="text-muted mt-1">
+                                                {ex.explanation}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Middle: Code editor + output */}
