@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { useParams, useLocation } from 'react-router';
+import { useParams } from 'react-router';
 import NavBar from '../components/NavBar';
 import questionAxios from '../questionAxios';
 
