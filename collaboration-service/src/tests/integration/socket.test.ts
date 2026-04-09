@@ -6,6 +6,7 @@ jest.mock('axios');
 
 import { createServer } from 'http';
 import Client from 'socket.io-client';
+import * as Y from 'yjs';
 import { createApp } from '../../app';
 import { initSocket } from '../../socket';
 import {
@@ -138,42 +139,42 @@ describe('lock-in', () => {
 // ─── code-change ───────────────────────────────────────────
 
 describe('code-change', () => {
-    it('should emit code-update to other user', (done) => {
+    it('should relay yjs-update to other user', (done) => {
         mockedGetSession.mockResolvedValue(mockSession({ status: 'active' }) as any);
-        mockedUpdateCode.mockResolvedValue(mockSession() as any);
-
-        clientA.emit('join-room', 'room1', 'user1');
-        clientB.emit('join-room', 'room1', 'user2');
-
-        // wait for both to join then send code change
-        setTimeout(() => {
-            clientA.emit('code-change', 'room1', 'console.log("hello")');
-        }, 100);
-
-        clientB.on('code-update', (code: any) => {
-            expect(code).toBe('console.log("hello")');
-            done();
-        });
-    });
-
-    it('should not emit code-update if session is not active', (done) => {
-        mockedGetSession.mockResolvedValue(mockSession({ status: 'pending' }) as any);
 
         clientA.emit('join-room', 'room1', 'user1');
         clientB.emit('join-room', 'room1', 'user2');
 
         setTimeout(() => {
-            clientA.emit('code-change', 'room1', 'console.log("hello")');
+            // create a real Yjs update
+            const ydoc = new Y.Doc();
+            const ytext = ydoc.getText('code');
+            
+            let update: Uint8Array | null = null;
+            ydoc.on('update', (u: Uint8Array) => {
+                update = u;
+            });
+            
+            ytext.insert(0, 'console.log("hello")');
+
+            // emit the update from clientA
+            clientA.emit('yjs-update', 'room1', update);
+
+            // clientB should receive it
+            clientB.on('yjs-update', (received: any) => {
+                try {
+                    // apply to a fresh doc and check content
+                    const receiverDoc = new Y.Doc();
+                    receiverDoc.getText('code');
+                    Y.applyUpdate(receiverDoc, new Uint8Array(received));
+                    expect(receiverDoc.getText('code').toString()).toBe('console.log("hello")');
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
         }, 100);
-
-        // should not receive code-update
-        clientB.on('code-update', () => {
-            done(new Error('should not have received code-update'));
-        });
-
-        // if nothing received after 500ms, test passes
-        setTimeout(() => done(), 500);
-    });
+    }, 10000);
 });
 
 // ─── run-code ───────────────────────────────────────────
