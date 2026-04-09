@@ -4,6 +4,10 @@ import { useParams } from 'react-router';
 import NavBar from '../components/NavBar';
 import questionAxios from '../questionAxios';
 import matchAxios from '../matchAxios';
+import * as Y from 'yjs';
+import { MonacoBinding } from 'y-monaco';
+import Editor from '@monaco-editor/react';
+import OutputPanel from '../components/CodeOutput';
 
 const COLLAB_URL = 'http://localhost:3004';
 
@@ -54,14 +58,19 @@ const Collab = () => {
     // TODO: these should come from matching service / route params
     const { roomId } = useParams();
 
+    const ydoc = useRef(new Y.Doc());
+    const ytext = useRef(ydoc.current.getText('code'));
+    const bindingRef = useRef<MonacoBinding | null>(null);
+    const starterInserted = useRef(false);
+
     const [socket, setSocket] = useState<Socket | null>(null);
     const [_session, setSession] = useState<SessionState | null>(null);
-    const [code, setCode] = useState('');
     const [messages, setMessages] = useState<Message[]>([]);
     const [chatInput, setChatInput] = useState('');
     const [selectedLanguage, setSelectedLanguage] = useState('');
     const [lockedIn, setLockedIn] = useState(false);
     const [partnerLockedIn, setPartnerLockedIn] = useState(false);
+    const [shouldInsertStarter, setShouldInsertStarter] = useState(false);
     const [timer, setTimer] = useState(30);
     const [sessionStatus, setSessionStatus] = useState('pending');
     const [codeResult, setCodeResult] = useState<any>(null);
@@ -76,9 +85,12 @@ const Collab = () => {
     const [submitTimer, setSubmitTimer] = useState(10);
     const [question, setQuestion] = useState<Question | null>(null);
 
+
     // Connect socket
     useEffect(() => {
-        const s = io(COLLAB_URL);
+        const s = io(COLLAB_URL, {
+            transports: ['websocket'],
+        });
         setSocket(s);
 
         s.on('connect', () => {
@@ -88,7 +100,6 @@ const Collab = () => {
         s.on('session-state', (session: SessionState) => {
             setSession(session);
             setSessionStatus(session?.status || 'pending');
-            if (session?.code) setCode(session.code);
             if (session?.language) setSelectedLanguage(session.language);
             if (session?.questionId) {
                 questionAxios
@@ -96,6 +107,21 @@ const Collab = () => {
                     .then((res) => setQuestion(res.data))
                     .catch(() => {});
             }
+        });
+
+        const handleYjsUpdate = (update: Uint8Array, origin: any) => {
+            if (origin === 'remote') return; // don't re-broadcast updates that came from the server
+            s.emit('yjs-update', roomId, update);
+        };
+
+        ydoc.current.on('update', handleYjsUpdate);
+
+        s.on('yjs-update', (update: ArrayBuffer) => {
+            Y.applyUpdate(ydoc.current, new Uint8Array(update), 'remote');
+        });
+
+        s.on('yjs-sync', (state: ArrayBuffer) => {
+            Y.applyUpdate(ydoc.current, new Uint8Array(state), 'remote');
         });
 
         s.on('chat-history', (history: Message[]) => {
@@ -106,19 +132,14 @@ const Collab = () => {
             setMessages((prev) => [...prev, msg]);
         });
 
-        s.on('session-started', (data: { language: string }) => {
+        s.on('session-started', (data: { language: string; insertStarter: boolean }) => {
             setSessionStatus('active');
             setSelectedLanguage(data.language);
+            setShouldInsertStarter(data.insertStarter);
         });
 
         s.on('user-locked-in', async () => {
             setPartnerLockedIn(true);
-            try {
-                await matchAxios.post('/matching/end', { matchId: roomId });
-                console.log('Match ended');
-            } catch (err) {
-                console.log(err);
-            }
         });
 
         s.on('language-mismatch', () => {
@@ -129,26 +150,26 @@ const Collab = () => {
             setSessionStatus('timeout');
         });
 
-        s.on('code-update', (newCode: string) => {
-            setCode(newCode);
-        });
-
         s.on('code-executing', () => {
+            console.log('code-executing received');
             setIsExecuting(true);
             setCodeResult(null);
         });
 
         s.on('code-result', (result: any) => {
+            console.log('code-result received:', result);
             setIsExecuting(false);
             setCodeResult(result);
         });
 
         s.on('submit-result', (result: any) => {
+            console.log('submit-result received:', result);
             setIsExecuting(false);
             setSubmitResult(result);
         });
 
         s.on('code-error', (err: any) => {
+            console.log('code-error received:', err);
             setIsExecuting(false);
             setCodeResult({ error: err.message });
         });
@@ -178,6 +199,8 @@ const Collab = () => {
         });
 
         return () => {
+            ydoc.current.off('update', handleYjsUpdate); // clean up yjs listener
+            bindingRef.current?.destroy();
             s.disconnect();
         };
     }, []);
@@ -217,14 +240,6 @@ const Collab = () => {
         }
     }, [partnerDisconnected]);
 
-    // Pre-fill starter code when session becomes active (only if editor is empty)
-    useEffect(() => {
-        if (sessionStatus === 'active' && question && selectedLanguage && !code) {
-            const starter = question.starterCode?.[selectedLanguage];
-            if (starter) setCode(starter);
-        }
-    }, [sessionStatus, question, selectedLanguage]);
-
     // Auto scroll chat
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -247,29 +262,64 @@ const Collab = () => {
         }
     }, [submitResult]);
 
+    // Pre-fill starter code — only the designated user inserts to avoid double insertion
+    useEffect(() => {
+        console.log('starter effect:', { sessionStatus, shouldInsertStarter, question: !!question, selectedLanguage, starterInserted: starterInserted.current });
+        if (sessionStatus === 'active' && shouldInsertStarter && question && selectedLanguage && !starterInserted.current) {
+            const starter = question.starterCode?.[selectedLanguage];
+            console.log('starter code found:', starter);
+            if (!starter) return;
+
+            starterInserted.current = true;
+            ydoc.current.transact(() => {
+                ytext.current.insert(0, starter);
+            });
+        }
+    }, [sessionStatus, shouldInsertStarter, question, selectedLanguage]);
+
+    const handleEditorWillMount = (monaco: any) => {
+        // --- 1. JavaScript & TypeScript (High Robustness) ---
+        // This enables the "Red Squiggles" for missing returns and type mismatches
+        const compilerOptions = {
+            target: monaco.languages.typescript.ScriptTarget.ESNext,
+            allowNonTsExtensions: true,
+            checkJs: true,          // Reports errors in plain .js files
+            noImplicitAny: false,   
+            noImplicitReturn: true, // Specifically catches missing return statements
+            strictNullChecks: true,
+        };
+
+        monaco.languages.typescript.javascriptDefaults.setCompilerOptions(compilerOptions);
+        monaco.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions);
+
+        // --- 2. Python, Java, C++ (Standard Robustness) ---
+        // For these, Monaco handles "Syntax" (missing brackets/colons) out of the box.
+        // We can improve the experience by enabling specific Editor options.
+        
+        monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+            validate: true,
+        });
+    };
+
     const handleLockIn = () => {
         if (!selectedLanguage || !socket) return;
         socket.emit('lock-in', roomId, userId, selectedLanguage);
         setLockedIn(true);
     };
 
-    const handleCodeChange = (newCode: string) => {
-        setCode(newCode);
-        socket?.emit('code-change', roomId, newCode);
-    };
-
     const handleRunCode = () => {
         if (!socket) return;
 
         console.log('TestCases for question:', question?.testCases);
-        const filteredTestCases = question?.testCases.filter((tc) => !tc.isHidden) ?? {};
+        const filteredTestCases = question?.testCases.filter((tc) => !tc.isHidden) ?? [];
         console.log('Running code with test cases:', filteredTestCases);
-
+        const code = ytext.current.toString();
         socket.emit('run-code', roomId, userId, code, selectedLanguage, filteredTestCases);
     };
 
     const handleSubmit = () => {
         if (!socket) return;
+        const code = ytext.current.toString();
         socket.emit('submit-code', roomId, userId, code, selectedLanguage, question?.testCases ?? []);
         setIsExecuting(true);
     };
@@ -296,6 +346,14 @@ const Collab = () => {
         }
         socket?.emit('leave-session', roomId, userId);
         window.location.href = '/home';
+    };
+
+    const handleEditorMount = (editor: any) => {
+        bindingRef.current = new MonacoBinding(
+            ytext.current,
+            editor.getModel()!,
+            new Set([editor]),
+        );
     };
 
     // Language selection overlay
@@ -542,38 +600,33 @@ const Collab = () => {
 
                     {/* Middle: Code editor + output */}
                     <div className="col-6 d-flex flex-column border-end" style={{ height: '100%' }}>
-                        <textarea
-                            className="form-control flex-grow-1 font-monospace border-0 rounded-0"
-                            style={{ resize: 'none', fontSize: '0.85rem' }}
-                            value={code}
-                            onChange={(e) => handleCodeChange(e.target.value)}
-                            placeholder="Write your code here..."
-                        />
-                        {/* Output panel */}
-                        <div
-                            className="border-top p-2 bg-dark text-white"
-                            style={{ height: '150px', overflowY: 'auto', fontSize: '0.85rem' }}
-                        >
-                            <strong>Output:</strong>
-                            {isExecuting && <p className="text-warning mb-0">Executing...</p>}
-                            {codeResult && !codeResult.error && (
-                                <pre className="mb-0 text-success">
-                                    {codeResult.stdout || 'No output'}
-                                </pre>
-                            )}
-                            {codeResult?.stderr && (
-                                <pre className="mb-0 text-danger">{codeResult.stderr}</pre>
-                            )}
-                            {codeResult?.error && (
-                                <pre className="mb-0 text-danger">{codeResult.error}</pre>
-                            )}
-                            {codeResult && (
-                                <small className="text-muted">
-                                    Status: {codeResult.status} | Time: {codeResult.time}s | Memory:{' '}
-                                    {codeResult.memory}KB
-                                </small>
-                            )}
+                        <div style={{ flex: 1, minHeight: 0 }}>
+                            <Editor
+                                height="100%"
+                                language={selectedLanguage} // 'python', 'javascript', 'java', or 'cpp'
+                                onMount={handleEditorMount}
+                                beforeMount={handleEditorWillMount}
+                                options={{
+                                    fontSize: 14,
+                                    automaticLayout: true,
+                                    minimap: { enabled: false },
+                                    // These 3 make it feel like VS Code:
+                                    quickSuggestions: {
+                                        other: true,
+                                        comments: false,
+                                        strings: true
+                                    },
+                                    parameterHints: { enabled: true },
+                                    suggestOnTriggerCharacters: true,
+                                    acceptSuggestionOnEnter: 'on',
+                                    tabCompletion: 'on',
+                                    wordBasedSuggestions: 'allDocuments',     // Shows the "IntelliSense" popup
+                                }}
+                            />
                         </div>
+
+                        {/* Output panel */}
+                        <OutputPanel isExecuting={isExecuting} codeResult={codeResult} />
                     </div>
 
                     {/* Right: Chat */}
@@ -644,8 +697,14 @@ const Collab = () => {
                     style={{ zIndex: 1000 }}
                 >
                     <div className="alert alert-danger d-flex align-items-center gap-2 mb-0">
-                        <strong>Wrong Answer.</strong> Keep trying!
-                        <button className="btn-close" onClick={() => setSubmitResult(null)} />
+                        <div>
+                            <strong>Wrong Answer.</strong>
+                            <div style={{ fontSize: '0.85rem' }}>
+                                {submitResult.results?.filter((r: any) => r.passed).length ?? 0}/
+                                {submitResult.results?.length ?? 0} test cases passed.
+                            </div>
+                        </div>
+                        <button className="btn-close ms-2" onClick={() => setSubmitResult(null)} />
                     </div>
                 </div>
             )}
