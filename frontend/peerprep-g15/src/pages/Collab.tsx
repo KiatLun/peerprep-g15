@@ -11,6 +11,7 @@ import OutputPanel from '../components/CodeOutput';
 import { createHighlighter } from 'shiki';
 import { shikiToMonaco } from '@shikijs/monaco';
 import { loader } from '@monaco-editor/react';
+import type { ExecutionSpec, TestCase } from '../types/execution';
 
 const COLLAB_URL = 'http://localhost:3004';
 
@@ -25,14 +26,7 @@ type Question = {
     examples: { input: string; output: string; explanation?: string }[];
     testCases: TestCase[];
     starterCode: Record<string, string>;
-};
-
-type TestCase = {
-    input: Object;
-    expectedOutput: Object;
-    isHidden: boolean;
-    explanation: string;
-    weight: number;
+    executionSpec: ExecutionSpec;
 };
 
 type Message = {
@@ -82,7 +76,6 @@ const Collab = () => {
     const [selectedLanguage, setSelectedLanguage] = useState('');
     const [lockedIn, setLockedIn] = useState(false);
     const [partnerLockedIn, setPartnerLockedIn] = useState(false);
-    const [shouldInsertStarter, setShouldInsertStarter] = useState(false);
     const [timer, setTimer] = useState(30);
     const [sessionStatus, setSessionStatus] = useState('pending');
     const [codeResult, setCodeResult] = useState<any>(null);
@@ -96,6 +89,22 @@ const Collab = () => {
     const [submitResult, setSubmitResult] = useState<any>(null);
     const [submitTimer, setSubmitTimer] = useState(10);
     const [question, setQuestion] = useState<Question | null>(null);
+    const [initialSyncDone, setInitialSyncDone] = useState(false);
+    const replaceEditorText = (value: string) => {
+        const current = ytext.current.toString();
+
+        ydoc.current.transact(() => {
+            if (current.length > 0) {
+                ytext.current.delete(0, current.length);
+            }
+            if (value.length > 0) {
+                ytext.current.insert(0, value);
+            }
+        });
+    };
+    const getExecutionSpec = (): ExecutionSpec => {
+        return question?.executionSpec ?? { kind: 'stdin', comparator: 'string' };
+    };
 
     // Connect socket
     useEffect(() => {
@@ -111,7 +120,16 @@ const Collab = () => {
         s.on('session-state', (session: SessionState) => {
             setSession(session);
             setSessionStatus(session?.status || 'pending');
-            if (session?.language) setSelectedLanguage(session.language);
+            setInitialSyncDone(false);
+
+            if (session?.language) {
+                setSelectedLanguage(session.language);
+            }
+
+            if (session?.status !== 'active') {
+                starterInserted.current = false;
+            }
+
             if (session?.questionId) {
                 questionAxios
                     .get<Question>(`/questions/${session.questionId}`)
@@ -129,10 +147,21 @@ const Collab = () => {
 
         s.on('yjs-update', (update: ArrayBuffer) => {
             Y.applyUpdate(ydoc.current, new Uint8Array(update), 'remote');
+
+            if (ytext.current.toString().trim().length > 0) {
+                starterInserted.current = true;
+            }
+            setInitialSyncDone(true);
         });
 
         s.on('yjs-sync', (state: ArrayBuffer) => {
             Y.applyUpdate(ydoc.current, new Uint8Array(state), 'remote');
+
+            if (ytext.current.toString().trim().length > 0) {
+                starterInserted.current = true;
+            }
+
+            setInitialSyncDone(true);
         });
 
         s.on('chat-history', (history: Message[]) => {
@@ -144,9 +173,10 @@ const Collab = () => {
         });
 
         s.on('session-started', (data: { language: string; insertStarter: boolean }) => {
+            starterInserted.current = false;
+            setInitialSyncDone(false);
             setSessionStatus('active');
             setSelectedLanguage(data.language);
-            setShouldInsertStarter(data.insertStarter);
         });
 
         s.on('user-locked-in', async () => {
@@ -275,30 +305,48 @@ const Collab = () => {
 
     // Pre-fill starter code — only the designated user inserts to avoid double insertion
     useEffect(() => {
-        console.log('starter effect:', {
-            sessionStatus,
-            shouldInsertStarter,
-            question: !!question,
-            selectedLanguage,
-            starterInserted: starterInserted.current,
-        });
         if (
-            sessionStatus === 'active' &&
-            shouldInsertStarter &&
-            question &&
-            selectedLanguage &&
-            !starterInserted.current
+            sessionStatus !== 'active' ||
+            !initialSyncDone ||
+            !question ||
+            !selectedLanguage ||
+            starterInserted.current
         ) {
-            const starter = question.starterCode?.[selectedLanguage];
-            console.log('starter code found:', starter);
-            if (!starter) return;
-
-            starterInserted.current = true;
-            ydoc.current.transact(() => {
-                ytext.current.insert(0, starter);
-            });
+            return;
         }
-    }, [sessionStatus, shouldInsertStarter, question, selectedLanguage]);
+
+        const currentEditorText = ytext.current.toString();
+        const trimmedEditorText = currentEditorText.trim();
+        const persistedCode = (_session?.code ?? '').trim();
+
+        if (trimmedEditorText.length > 0) {
+            starterInserted.current = true;
+            return;
+        }
+
+        if (persistedCode.length > 0) {
+            replaceEditorText(_session!.code);
+            starterInserted.current = true;
+            return;
+        }
+
+        const starter = question.starterCode?.[selectedLanguage];
+        if (!starter) return;
+
+        replaceEditorText(starter);
+        starterInserted.current = true;
+    }, [sessionStatus, initialSyncDone, question, selectedLanguage, _session]);
+
+    useEffect(() => {
+        if (sessionStatus !== 'active') return;
+        if (initialSyncDone) return;
+
+        const timeout = setTimeout(() => {
+            setInitialSyncDone(true);
+        }, 800);
+
+        return () => clearTimeout(timeout);
+    }, [sessionStatus, initialSyncDone]);
 
     const handleEditorWillMount = (monaco: any) => {
         // --- 1. JavaScript & TypeScript (High Robustness) ---
@@ -333,11 +381,18 @@ const Collab = () => {
     const handleRunCode = () => {
         if (!socket) return;
 
-        console.log('TestCases for question:', question?.testCases);
         const filteredTestCases = question?.testCases.filter((tc) => !tc.isHidden) ?? [];
-        console.log('Running code with test cases:', filteredTestCases);
         const code = ytext.current.toString();
-        socket.emit('run-code', roomId, userId, code, selectedLanguage, filteredTestCases);
+
+        socket.emit(
+            'run-code',
+            roomId,
+            userId,
+            code,
+            selectedLanguage,
+            filteredTestCases,
+            getExecutionSpec(),
+        );
     };
 
     const handleSubmit = () => {
@@ -350,6 +405,7 @@ const Collab = () => {
             code,
             selectedLanguage,
             question?.testCases ?? [],
+            getExecutionSpec(),
         );
         setIsExecuting(true);
     };
@@ -643,19 +699,21 @@ const Collab = () => {
                     </div>
 
                     {/* Middle: Code editor + output */}
-                    <div className="col-6 d-flex flex-column border-end" style={{ height: '100%' }}>
+                    <div
+                        className="col-6 d-flex flex-column border-end"
+                        style={{ height: '100%', minHeight: 0 }}
+                    >
                         <div style={{ flex: 1, minHeight: 0 }}>
                             <Editor
                                 theme="github-light"
                                 height="100%"
-                                language={selectedLanguage} // 'python', 'javascript', 'java', or 'cpp'
+                                language={selectedLanguage}
                                 onMount={handleEditorMount}
                                 beforeMount={handleEditorWillMount}
                                 options={{
                                     fontSize: 14,
                                     automaticLayout: true,
                                     minimap: { enabled: false },
-                                    // These 3 make it feel like VS Code:
                                     quickSuggestions: {
                                         other: true,
                                         comments: false,
@@ -665,13 +723,14 @@ const Collab = () => {
                                     suggestOnTriggerCharacters: true,
                                     acceptSuggestionOnEnter: 'on',
                                     tabCompletion: 'on',
-                                    wordBasedSuggestions: 'allDocuments', // Shows the "IntelliSense" popup
+                                    wordBasedSuggestions: 'allDocuments',
                                 }}
                             />
                         </div>
 
-                        {/* Output panel */}
-                        <OutputPanel isExecuting={isExecuting} codeResult={codeResult} />
+                        <div style={{ flexShrink: 0, maxHeight: '40vh', overflowY: 'auto' }}>
+                            <OutputPanel isExecuting={isExecuting} codeResult={codeResult} />
+                        </div>
                     </div>
 
                     {/* Right: Chat */}

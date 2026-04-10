@@ -1,4 +1,6 @@
-export const sampleQuestions = [
+import { inferExecutionSpec, type SeedQuestion } from '../types/execution';
+
+const rawSampleQuestions: SeedQuestion[] = [
     {
         questionId: 1,
         title: 'Repeated DNA Sequences',
@@ -38,7 +40,7 @@ export const sampleQuestions = [
         starterCode: new Map([
             [
                 'python',
-                'class Solution:\n    def findRepeatedDnaSequences(self, s: str) -> list[str]:\n        pass',
+                'from typing import List\n\nclass Solution:\n    def findRepeatedDnaSequences(self, s: str) -> List[str]:\n        pass',
             ],
             ['javascript', 'var findRepeatedDnaSequences = function(s) {\n\n};'],
             [
@@ -121,7 +123,7 @@ export const sampleQuestions = [
         starterCode: new Map([
             [
                 'python',
-                'class Solution:\n    def canFinish(self, numCourses: int, prerequisites: list[list[int]]) -> bool:\n        pass',
+                'from typing import List\n\nclass Solution:\n    def canFinish(self, numCourses: int, prerequisites: List[List[int]]) -> bool:\n        pass',
             ],
             ['javascript', 'var canFinish = function(numCourses, prerequisites) {\n\n};'],
             [
@@ -371,7 +373,7 @@ export const sampleQuestions = [
         starterCode: new Map([
             [
                 'python',
-                'class Solution:\n    def rotate(self, matrix: list[list[int]]) -> None:\n        pass',
+                'from typing import List\n\nclass Solution:\n    def rotate(self, matrix: List[List[int]]) -> None:\n        pass',
             ],
             ['javascript', 'var rotate = function(matrix) {\n\n};'],
             [
@@ -568,7 +570,7 @@ export const sampleQuestions = [
         starterCode: new Map([
             [
                 'python',
-                'class Solution:\n    def maxSlidingWindow(self, nums: list[int], k: int) -> list[int]:\n        pass',
+                'from typing import List\n\nclass Solution:\n    def maxSlidingWindow(self, nums: List[int], k: int) -> List[int]:\n        pass',
             ],
             ['javascript', 'var maxSlidingWindow = function(nums, k) {\n\n};'],
             [
@@ -636,7 +638,7 @@ export const sampleQuestions = [
         starterCode: new Map([
             [
                 'python',
-                'class Solution:\n    def solveNQueens(self, n: int) -> list[list[str]]:\n        pass',
+                'from typing import List\n\nclass Solution:\n    def solveNQueens(self, n: int) -> List[List[str]]:\n        pass',
             ],
             ['javascript', 'var solveNQueens = function(n) {\n\n};'],
             [
@@ -861,7 +863,7 @@ export const sampleQuestions = [
         starterCode: new Map([
             [
                 'python',
-                'class Solution:\n    def xorGame(self, nums: list[int]) -> bool:\n        pass',
+                'from typing import List\n\nclass Solution:\n    def xorGame(self, nums: List[int]) -> bool:\n        pass',
             ],
             ['javascript', 'var xorGame = function(nums) {\n\n};'],
             [
@@ -884,3 +886,8 @@ export const sampleQuestions = [
         memoryLimitMb: 256,
     },
 ];
+
+export const sampleQuestions = rawSampleQuestions.map((question) => ({
+    ...question,
+    executionSpec: inferExecutionSpec(question),
+}));
