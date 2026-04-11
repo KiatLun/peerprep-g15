@@ -58,7 +58,7 @@ const highlighterPromise = createHighlighter({
 });
 
 loader.init().then(async (monaco) => {
-    const highlighter = await highlighterPromise
+    const highlighter = await highlighterPromise;
 
     shikiToMonaco(highlighter, monaco);
     monaco.editor.setTheme('github-light');
@@ -191,7 +191,7 @@ const Collab = () => {
             setSessionStatus('active');
             setSelectedLanguage(data.language);
 
-             // Only the designated user inserts — do it here, not in useEffect
+            // Only the designated user inserts — do it here, not in useEffect
             if (data.insertStarter) {
                 // Wait for question to be available
                 const tryInsert = (attempts = 0) => {
@@ -713,36 +713,43 @@ const Collab = () => {
                         {question?.constraints && question.constraints.length > 0 && (
                             <div className="mt-3">
                                 <strong style={{ fontSize: '0.9rem' }}>Constraints</strong>
-                                <div className= "bg-light border rounded p-2 mt-2" style={{ fontSize: '0.8rem' }}>
-                                {question.constraints.map((constraint, i) => (
-                                    <div
-                                        key={i}
-                                        className={i > 0 ? 'mt-1' : ''}
-                                        style={{ fontSize: '0.8rem' }}
-                                    >
-                                        <span className="text-muted mt-1">{i + 1}: </span>{' '}
-                                        <code> {constraint}</code>
-                                    </div>
-                                ))}
+                                <div
+                                    className="bg-light border rounded p-2 mt-2"
+                                    style={{ fontSize: '0.8rem' }}
+                                >
+                                    {question.constraints.map((constraint, i) => (
+                                        <div
+                                            key={i}
+                                            className={i > 0 ? 'mt-1' : ''}
+                                            style={{ fontSize: '0.8rem' }}
+                                        >
+                                            <span className="text-muted mt-1">{i + 1}: </span>{' '}
+                                            <code> {constraint}</code>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}
                         {question?.hints && question.hints.length > 0 && (
                             <div className="mt-3">
                                 <strong style={{ fontSize: '0.9rem' }}>Hints</strong>
-                                <div className="bg-light border rounded p-2 mt-2" style={{ fontSize: '0.8rem' }}>
-                                {question.hints.map((hint, i) => (
-                                    <div
-                                        key={i}
-                                        className={i > 0 ? 'mt-1' : ''}
-                                        style={{ fontSize: '0.8rem' }}
-                                    >
-                                        <span className="text-muted mt-1">{i + 1}: {hint}</span>
-                                    </div>
-                                ))}
+                                <div
+                                    className="bg-light border rounded p-2 mt-2"
+                                    style={{ fontSize: '0.8rem' }}
+                                >
+                                    {question.hints.map((hint, i) => (
+                                        <div
+                                            key={i}
+                                            className={i > 0 ? 'mt-1' : ''}
+                                            style={{ fontSize: '0.8rem' }}
+                                        >
+                                            <span className="text-muted mt-1">
+                                                {i + 1}: {hint}
+                                            </span>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
-
                         )}
                     </div>
 
