@@ -22,6 +22,7 @@ type Question = {
     categories: string[];
     difficulty: string;
     constraints: string[];
+    hints: string[];
     sourceUrl?: string;
     supportedLanguages: string[];
     examples: { input: string; output: string; explanation?: string }[];
@@ -65,6 +66,11 @@ loader.init().then(async (monaco) => {
     shikiReadyCallbacks.forEach((cb) => cb());
     shikiReadyCallbacks.length = 0;
 });
+
+const stripParamName = (input: string) => {
+    const eqIndex = input.indexOf('=');
+    return eqIndex !== -1 ? input.slice(eqIndex + 2) : input; // +2 to skip '= '
+};
 
 const Collab = () => {
     // const name = localStorage.getItem('name') || 'Admin';
@@ -691,7 +697,7 @@ const Collab = () => {
                                     >
                                         <div>
                                             <span className="fw-semibold">Input:</span>{' '}
-                                            <code>{ex.input}</code>
+                                            <code>{stripParamName(ex.input)}</code>
                                         </div>
                                         <div>
                                             <span className="fw-semibold">Output:</span>{' '}
@@ -707,18 +713,36 @@ const Collab = () => {
                         {question?.constraints && question.constraints.length > 0 && (
                             <div className="mt-3">
                                 <strong style={{ fontSize: '0.9rem' }}>Constraints</strong>
-                                <div className = "big-light border rounded p-2 mt-2" style={{ fontSize: '0.8rem' }}>
+                                <div className= "bg-light border rounded p-2 mt-2" style={{ fontSize: '0.8rem' }}>
                                 {question.constraints.map((constraint, i) => (
                                     <div
                                         key={i}
                                         className={i > 0 ? 'mt-1' : ''}
                                         style={{ fontSize: '0.8rem' }}
                                     >
-                                        <code>{i + 1}: {constraint}</code>
+                                        <span className="text-muted mt-1">{i + 1}: </span>{' '}
+                                        <code> {constraint}</code>
                                     </div>
                                 ))}
                                 </div>
                             </div>
+                        )}
+                        {question?.hints && question.hints.length > 0 && (
+                            <div className="mt-3">
+                                <strong style={{ fontSize: '0.9rem' }}>Hints</strong>
+                                <div className="bg-light border rounded p-2 mt-2" style={{ fontSize: '0.8rem' }}>
+                                {question.hints.map((hint, i) => (
+                                    <div
+                                        key={i}
+                                        className={i > 0 ? 'mt-1' : ''}
+                                        style={{ fontSize: '0.8rem' }}
+                                    >
+                                        <span className="text-muted mt-1">{i + 1}: {hint}</span>
+                                    </div>
+                                ))}
+                                </div>
+                            </div>
+
                         )}
                     </div>
 
