@@ -1,18 +1,29 @@
 import { Server } from 'socket.io';
 import http from 'http';
+import * as Y from 'yjs';
 import {
     getSession,
     voteLanguage,
     updateCode,
     endSession,
     handleDisconnect,
-    executeCode,
+    submitCode,
     addMessageToSession,
 } from './services/collaboration-service';
+import { ExecutionSpec, TestCase } from './types/execution';
 
 const disconnectTimers = new Map<string, NodeJS.Timeout>();
 const languageTimers = new Map<string, NodeJS.Timeout>();
 const runCodeTimers = new Map<string, NodeJS.Timeout>();
+const roomDocs = new Map<string, Y.Doc>();
+
+async function persistCode(roomId: string) {
+    const doc = roomDocs.get(roomId);
+    if (!doc) return;
+
+    const code = doc.getText('code').toString();
+    if (code) await updateCode(roomId, code);
+}
 
 export function initSocket(server: http.Server) {
     const io = new Server(server, {
@@ -22,7 +33,6 @@ export function initSocket(server: http.Server) {
     io.on('connection', (socket) => {
         console.log('user connected:', socket.id);
 
-        // user joins a room
         socket.on('join-room', async (roomId: string, userId: string, username: string) => {
             socket.join(roomId);
             socket.data.roomId = roomId;
@@ -31,9 +41,18 @@ export function initSocket(server: http.Server) {
 
             socket.to(roomId).emit('partner-info', { userId, username });
 
-            // cancel disconnect timer if user reconnected
+            const socketsInRoom = await io.in(roomId).fetchSockets();
+            for (const s of socketsInRoom) {
+                if (s.id !== socket.id && s.data.username) {
+                    socket.emit('partner-info', {
+                        userId: s.data.userId,
+                        username: s.data.username,
+                    });
+                }
+            }
+
             if (disconnectTimers.has(userId)) {
-                clearTimeout(disconnectTimers.get(userId));
+                clearTimeout(disconnectTimers.get(userId)!);
                 disconnectTimers.delete(userId);
                 io.to(roomId).emit('user-reconnected', { userId });
             }
@@ -41,150 +60,198 @@ export function initSocket(server: http.Server) {
             const session = await getSession(roomId);
             socket.emit('session-state', session);
 
-            //send chat history to the joining user
+            if (roomDocs.has(roomId)) {
+                const state = Y.encodeStateAsUpdate(roomDocs.get(roomId)!);
+                socket.emit('yjs-sync', state);
+            }
+
             if (session?.messages?.length) {
                 socket.emit('chat-history', session.messages);
             }
 
             const usersInRoom = io.sockets.adapter.rooms.get(roomId)?.size ?? 0;
-
             if (usersInRoom === 2) {
                 io.to(roomId).emit('user-joined', { timeRemaining: 30 });
             }
 
-            // only start language timer once
-            if (usersInRoom == 2 && !languageTimers.has(roomId)) {
+            if (usersInRoom === 2 && !languageTimers.has(roomId)) {
                 const timer = setTimeout(async () => {
-                    const session = await getSession(roomId);
-                    if (session?.status === 'pending') {
+                    const currentSession = await getSession(roomId);
+                    if (currentSession?.status === 'pending') {
                         await endSession(roomId);
                         io.to(roomId).emit('language-timeout');
                     }
                 }, 30000);
+
                 languageTimers.set(roomId, timer);
             }
         });
 
-        // user locks in language
         socket.on('lock-in', async (roomId: string, userId: string, language: string) => {
             const session = await voteLanguage(roomId, userId, language);
 
+            console.log('lock-in result:', {
+                userId,
+                status: session?.status,
+                language: session?.language,
+            });
+
             if (session?.status === 'active') {
-                // both locked in and agreed
-                clearTimeout(languageTimers.get(roomId));
+                clearTimeout(languageTimers.get(roomId)!);
                 languageTimers.delete(roomId);
-                io.to(roomId).emit('session-started', { language: session.language });
+
+                socket.emit('session-started', {
+                    language: session.language,
+                    insertStarter: true,
+                });
+
+                socket.to(roomId).emit('session-started', {
+                    language: session.language,
+                    insertStarter: false,
+                });
             } else if (session?.status === 'ended') {
-                // disagreed
-                clearTimeout(languageTimers.get(roomId));
+                clearTimeout(languageTimers.get(roomId)!);
                 languageTimers.delete(roomId);
                 io.to(roomId).emit('language-mismatch');
             } else {
-                // one user locked in, waiting for other
                 io.to(roomId).emit('user-locked-in', { userId });
             }
         });
 
-        // code change
-        socket.on('code-change', async (roomId: string, code: string) => {
-            const session = await getSession(roomId);
-            if (!session || session.status !== 'active') return; // add this
+        socket.on('yjs-update', (roomId: string, update: Uint8Array) => {
+            if (!roomDocs.has(roomId)) roomDocs.set(roomId, new Y.Doc());
 
-            await updateCode(roomId, code);
-            socket.to(roomId).emit('code-update', code);
+            const doc = roomDocs.get(roomId)!;
+            Y.applyUpdate(doc, update);
+            socket.to(roomId).emit('yjs-update', update);
         });
 
-        // user disconnects
         socket.on('disconnect', async () => {
             const { roomId, userId } = socket.data;
             console.log('=== DISCONNECT === roomId:', roomId, 'userId:', userId);
+
             if (!roomId || !userId) return;
 
             const session = await getSession(roomId);
             const usersInRoom = io.sockets.adapter.rooms.get(roomId)?.size ?? 0;
 
             if (session?.status === 'active') {
+                await persistCode(roomId);
                 io.to(roomId).emit('user-disconnected', { userId });
 
                 const timer = setTimeout(async () => {
                     const sessionEnded = await handleDisconnect(roomId);
                     if (sessionEnded) {
+                        roomDocs.delete(roomId);
                         io.to(roomId).emit('session-ended', { reason: 'disconnect' });
                     }
                 }, 30000);
 
                 disconnectTimers.set(userId, timer);
             } else if (session?.status === 'pending' && usersInRoom >= 1) {
-                // Only end if the other user is still there (meaning someone left after both joined)
                 await endSession(roomId);
+                roomDocs.delete(roomId);
                 io.to(roomId).emit('session-ended', { reason: 'disconnect' });
             }
         });
 
-        // user runs code
         socket.on(
             'run-code',
-            async (roomId: string, userId: string, code: string, language: string) => {
+            async (
+                roomId: string,
+                userId: string,
+                code: string,
+                language: string,
+                testCases: TestCase[],
+                executionSpec: ExecutionSpec,
+            ) => {
                 const session = await getSession(roomId);
                 if (!session) return;
                 if (session.status !== 'active') return;
                 if (!session.userIds.includes(userId)) return;
 
-                // debounce per room
-                if (runCodeTimers.has(roomId)) clearTimeout(runCodeTimers.get(roomId));
+                if (runCodeTimers.has(roomId)) {
+                    clearTimeout(runCodeTimers.get(roomId)!);
+                }
+
                 const timer = setTimeout(async () => {
                     runCodeTimers.delete(roomId);
+
                     try {
+                        await persistCode(roomId);
                         io.to(roomId).emit('code-executing');
-                        const result = await executeCode(roomId, code, language);
+
+                        const result = await submitCode(
+                            roomId,
+                            code,
+                            language,
+                            testCases,
+                            executionSpec,
+                        );
+
                         io.to(roomId).emit('code-result', result);
-                    } catch (err) {
-                        io.to(roomId).emit('code-error', { message: 'Execution failed' });
+                    } catch (err: any) {
+                        io.to(roomId).emit('code-error', {
+                            message: err?.message || 'Execution failed',
+                        });
                     }
                 }, 500);
+
                 runCodeTimers.set(roomId, timer);
             },
         );
 
         socket.on(
             'submit-code',
-            async (roomId: string, userId: string, code: string, language: string) => {
+            async (
+                roomId: string,
+                userId: string,
+                code: string,
+                language: string,
+                testCases: TestCase[],
+                executionSpec: ExecutionSpec,
+            ) => {
                 const session = await getSession(roomId);
                 if (!session || session.status !== 'active') return;
                 if (!session.userIds.includes(userId)) return;
 
                 try {
+                    await persistCode(roomId);
                     io.to(roomId).emit('code-executing');
-                    const result = await executeCode(roomId, code, language);
 
-                    // TODO: compare result.stdout with expected output from question service
-                    // For now, just send the result and let frontend decide
+                    const result = await submitCode(
+                        roomId,
+                        code,
+                        language,
+                        testCases,
+                        executionSpec,
+                    );
 
-                    const passed = result.status === 'Accepted' && !result.stderr;
-
-                    io.to(roomId).emit('submit-result', {
-                        stdout: result.stdout,
-                        stderr: result.stderr,
-                        status: result.status,
-                        passed: passed,
+                    io.to(roomId).emit('submit-result', result);
+                } catch (err: any) {
+                    io.to(roomId).emit('code-error', {
+                        message: err?.message || 'Execution failed',
                     });
-                } catch (err) {
-                    io.to(roomId).emit('code-error', { message: 'Execution failed' });
                 }
             },
         );
 
-        socket.on('leave-session', async (roomId: string, userId: string) => {
-            await endSession(roomId); // call service directly
+        socket.on('leave-session', async (roomId: string) => {
+            await persistCode(roomId);
+            await endSession(roomId);
+            roomDocs.delete(roomId);
             io.to(roomId).emit('session-ended', { reason: 'left' });
             socket.leave(roomId);
         });
 
-        //Adding message handling for chat functionality
         socket.on('send-message', async (data) => {
             const { roomId, senderId, username, content } = data;
 
-            await addMessageToSession(roomId, { senderId, username, content });
+            await addMessageToSession(roomId, {
+                senderId,
+                username,
+                content,
+            });
 
             socket.to(roomId).emit('receive-message', {
                 senderId,
