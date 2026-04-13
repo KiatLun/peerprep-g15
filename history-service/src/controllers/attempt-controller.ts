@@ -74,7 +74,6 @@ export class AttemptController {
 				language,
 				code,
 				passed,
-				score: getOptionalNumber(req.body?.score),
 				results: Array.isArray(req.body?.results) ? req.body.results : undefined,
 				error: getOptionalString(req.body?.error) ?? null,
 				submittedAt: getOptionalDateLike(req.body?.submittedAt),

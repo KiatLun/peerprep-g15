@@ -9,7 +9,6 @@ export interface SaveAttemptInput {
 	language: string;
 	code: string;
 	passed: boolean;
-	score?: number;
 	results?: AttemptTestCaseResult[];
 	error?: string | null;
 	submittedAt?: string | number | Date;
@@ -51,7 +50,6 @@ export async function saveAttempt(input: SaveAttemptInput) {
 		language: input.language.trim(),
 		code: input.code,
 		passed: input.passed,
-		score: input.score,
 		results: input.results ?? [],
 		error: input.error ?? null,
 		submittedAt: toDate(input.submittedAt),

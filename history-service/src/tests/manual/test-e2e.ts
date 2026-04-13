@@ -19,7 +19,6 @@ type AttemptResponse = {
 	language: string;
 	code: string;
 	passed: boolean;
-	score?: number;
 	results?: Array<{ passed: boolean }>;
 	error?: string | null;
 	submittedAt: string;
@@ -91,7 +90,6 @@ async function runManualTest(server: Server) {
 		language: TEST_LANGUAGE,
 		code: 'function twoSum() { return []; }',
 		passed: false,
-		score: 40,
 		results: [
 			{
 				input: [2, 7, 11, 15],
@@ -123,7 +121,6 @@ async function runManualTest(server: Server) {
 		language: TEST_LANGUAGE,
 		code: 'function twoSum() { return [0, 1]; }',
 		passed: true,
-		score: 100,
 		results: [
 			{
 				input: [2, 7, 11, 15],
@@ -150,7 +147,6 @@ async function runManualTest(server: Server) {
 		language: 'python',
 		code: 'def reverse_string(s):\n    return s[::-1]',
 		passed: true,
-		score: 100,
 		submittedAt: '2026-04-13T01:00:00.000Z',
 	});
 	console.log('Status:', otherUserSave.status);

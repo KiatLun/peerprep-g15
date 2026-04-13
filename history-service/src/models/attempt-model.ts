@@ -20,7 +20,6 @@ export interface AttemptDocument {
 	language: string;
 	code: string;
 	passed: boolean;
-	score?: number;
 	results?: AttemptTestCaseResult[];
 	error?: string | null;
 	submittedAt: Date;
@@ -50,7 +49,6 @@ const attemptSchema = new Schema<AttemptDocument>(
 		language: { type: String, required: true },
 		code: { type: String, required: true },
 		passed: { type: Boolean, required: true, index: true },
-		score: { type: Number },
 		results: { type: [attemptResultSchema], default: [] },
 		error: { type: String, default: null },
 		submittedAt: { type: Date, required: true, index: true },
