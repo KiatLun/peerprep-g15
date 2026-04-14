@@ -37,7 +37,6 @@ export interface MatchingRepository {
 }
 
 const TOPIC_EXPANSION_WAIT_MS = 15_000;
-const FIFO_EXPANSION_WAIT_MS = 30_000;
 const QUEUE_TIMEOUT_MS = 60_000;
 const DIFFICULTY_RANK: Record<Difficulty, number> = {
     easy: 0,
@@ -256,8 +255,8 @@ export function createInMemoryMatchingRepository() {
     return new InMemoryMatchingRepository();
 }
 
-// Matching policy: t = 0 exact match, t = 15s topic-only expansion,
-// t = 30s FIFO fallback expansion, t = 60s give up and timeout.
+// Matching policy: t = 0 exact match,
+// t = 15s expand to any difficulty within same topic, t = 60s timeout.
 // Within each stage, longest-waiting eligible user is selected for fairness.
 export function setMatchingRepository(nextRepository?: MatchingRepository) {
     repository = nextRepository ?? new MongoMatchingRepository();
@@ -301,7 +300,7 @@ function isTimedOut(entry: QueueEntry, nowMs: number) {
 }
 
 // Removes timed-out users from all queues so they are never considered for matching.
-// Assigns candidate stage: 0 exact match, 1 topic-only after wait, 2 FIFO fallback after longer wait.
+// Assigns candidate stage: 0 exact match, 1 same-topic after wait.
 function getMatchStage(joiningUser: QueueEntry, candidate: QueueEntry, nowMs: number) {
     const sameTopic =
         candidate.topic.trim().toLowerCase() === joiningUser.topic.trim().toLowerCase();
@@ -314,10 +313,6 @@ function getMatchStage(joiningUser: QueueEntry, candidate: QueueEntry, nowMs: nu
     const waitedMs = getWaitedMs(candidate, nowMs);
     if (sameTopic && waitedMs >= TOPIC_EXPANSION_WAIT_MS) {
         return 1;
-    }
-
-    if (waitedMs >= FIFO_EXPANSION_WAIT_MS) {
-        return 2;
     }
 
     return null;

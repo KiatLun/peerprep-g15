@@ -107,7 +107,7 @@ test('capitalized existing match difficulty still hydrates match.question', asyn
     assert.equal(status.match?.question?.questionId, 1);
 });
 
-test('match with different topics chooses one topic randomly and lower difficulty', async () => {
+test('match with different topics does not happen after expansion window', async () => {
     const baseTimeMs = new Date('2026-04-04T12:00:00.000Z').getTime();
 
     await joinQueue(
@@ -130,13 +130,12 @@ test('match with different topics chooses one topic randomly and lower difficult
         'access-user-topic-b',
     );
 
-    assert.equal(secondJoin.state, 'matched');
-    const match = secondJoin.match as MatchResult;
-    assert.ok(match.topic === 'arrays' || match.topic === 'graphs');
-    assert.equal(match.difficulty, 'easy');
-    assert.ok(match.question);
-    assert.equal(match.question?.difficulty, 'Easy');
-    assert.ok(match.question?.categories.includes(match.topic));
+    assert.equal(secondJoin.state, 'queued');
+
+    const queue = await listQueuedUsers(baseTimeMs + 30_000);
+    assert.equal(queue.length, 2);
+    assert.ok(queue.some((entry) => entry.userId === 'user-topic-a'));
+    assert.ok(queue.some((entry) => entry.userId === 'user-topic-b'));
 });
 
 test('match with same topic but different difficulty picks lower difficulty', async () => {
@@ -303,7 +302,7 @@ test('queue priority expands to topic-only after first wait window', () => {
     assert.equal(selectedIndex, 0);
 });
 
-test('queue priority falls back to FIFO after second wait window', () => {
+test('queue priority does not expand to different topics after second wait window', () => {
     const waitingQueue: QueueEntry[] = [
         {
             userId: 'user-global-1',
@@ -331,10 +330,10 @@ test('queue priority falls back to FIFO after second wait window', () => {
         joiningUser,
         new Date('2026-04-04T10:00:31.000Z').getTime(),
     );
-    assert.equal(selectedIndex, 0);
+    assert.equal(selectedIndex, -1);
 });
 
-test('edge case: expansion boundaries activate exactly at 15s and 30s', () => {
+test('edge case: same-topic boundary activates at 15s and remains topic-locked at 30s', () => {
     const waitingQueue: QueueEntry[] = [
         {
             userId: 'user-topic-only',
@@ -343,7 +342,7 @@ test('edge case: expansion boundaries activate exactly at 15s and 30s', () => {
             joinedAt: '2026-04-04T10:00:00.000Z',
         },
         {
-            userId: 'user-fifo',
+            userId: 'user-other-topic',
             topic: 'arrays',
             difficulty: 'hard',
             joinedAt: '2026-04-04T10:00:01.000Z',
@@ -364,18 +363,18 @@ test('edge case: expansion boundaries activate exactly at 15s and 30s', () => {
     );
     assert.equal(topicExpansionBoundaryIndex, 0);
 
-    const fifoJoiningUser: QueueEntry = {
-        userId: 'user-join-fifo',
+    const crossTopicJoiningUser: QueueEntry = {
+        userId: 'user-join-cross-topic',
         topic: 'graphs',
         difficulty: 'medium',
         joinedAt: '2026-04-04T10:02:00.000Z',
     };
-    const fifoBoundaryIndex = pickBestWaitingUserIndex(
+    const secondBoundaryIndex = pickBestWaitingUserIndex(
         waitingQueue,
-        fifoJoiningUser,
+        crossTopicJoiningUser,
         new Date('2026-04-04T10:00:30.000Z').getTime(),
     );
-    assert.equal(fifoBoundaryIndex, 0);
+    assert.equal(secondBoundaryIndex, -1);
 });
 
 test('edge case fixed: duplicate join from the same user is idempotent', async () => {
