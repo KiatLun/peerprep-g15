@@ -15,6 +15,7 @@ import type {
     QueueStatus,
 } from '../models/matching-model';
 import { fetchRandomQuestionForMatch } from './question-service';
+import { createCollabSession } from './collab-service';
 
 export interface MatchingRepository {
     clear(): Promise<void>;
@@ -203,7 +204,6 @@ class MongoMatchingRepository implements MatchingRepository {
                 const question = await fetchRandomQuestionForMatch(
                     criteria.topic,
                     criteria.difficulty,
-                    accessToken,
                 );
 
                 if (!question) {
@@ -649,12 +649,12 @@ async function safeMarkMatchHistoryEnded(matchId: string, nowMs: number) {
     }
 }
 
-async function ensureMatchHasQuestion(match: MatchResult, accessToken?: string) {
+async function ensureMatchHasQuestion(match: MatchResult) {
     if (match.question) {
         return match;
     }
 
-    const question = await fetchRandomQuestionForMatch(match.topic, match.difficulty, accessToken);
+    const question = await fetchRandomQuestionForMatch(match.topic, match.difficulty);
     if (!question) {
         console.warn('Unable to hydrate question for existing match', {
             matchId: match.matchId,
@@ -692,11 +692,7 @@ async function attemptMatchForEntry(
     }
 
     const criteria = resolveMatchCriteria(waitingUser, entry);
-    const question = await fetchRandomQuestionForMatch(
-        criteria.topic,
-        criteria.difficulty,
-        accessToken,
-    );
+    const question = await fetchRandomQuestionForMatch(criteria.topic, criteria.difficulty);
 
     if (!question) {
         console.warn('Match candidate found but no valid question available, keeping user queued', {
@@ -736,6 +732,14 @@ async function attemptMatchForEntry(
     };
 
     await repository.saveMatch(match);
+
+    if (!match.question) {
+        console.error('Match created without question');
+        return null;
+    }
+
+    await createCollabSession(match.matchId, match.userIds, String(match.question.questionId));
+
     await Promise.all([
         safeRecordQueueEvent(waitingUser, 'matched', nowMs, match.matchId),
         safeRecordQueueEvent(entry, 'matched', nowMs, match.matchId),
@@ -751,7 +755,7 @@ export async function joinQueue(request: MatchRequest, nowMs = Date.now(), acces
 
     const existingMatch = await repository.getMatchByUserId(request.userId);
     if (existingMatch) {
-        const hydratedMatch = await ensureMatchHasQuestion(existingMatch, accessToken);
+        const hydratedMatch = await ensureMatchHasQuestion(existingMatch);
         return { state: 'matched' as const, match: hydratedMatch };
     }
 
@@ -781,7 +785,7 @@ export async function joinQueue(request: MatchRequest, nowMs = Date.now(), acces
 
         const concurrentMatch = await repository.getMatchByUserId(request.userId);
         if (concurrentMatch) {
-            const hydratedMatch = await ensureMatchHasQuestion(concurrentMatch, accessToken);
+            const hydratedMatch = await ensureMatchHasQuestion(concurrentMatch);
             return { state: 'matched' as const, match: hydratedMatch };
         }
 
@@ -830,7 +834,7 @@ export async function getQueueStatus(
 ): Promise<QueueStatus> {
     const activeMatch = await repository.getMatchByUserId(userId);
     if (activeMatch) {
-        const hydratedMatch = await ensureMatchHasQuestion(activeMatch, accessToken);
+        const hydratedMatch = await ensureMatchHasQuestion(activeMatch);
         return {
             userId,
             state: 'matched',
