@@ -256,6 +256,12 @@ class MongoMatchingRepository implements MatchingRepository {
                     { session },
                 );
 
+                if (!match.question) {
+                    throw new Error('Failed to create match: no valid question available');
+                }
+
+                await createCollabSession(match.matchId, match.userIds, String(match.question.questionId));
+
                 return match;
             });
 
