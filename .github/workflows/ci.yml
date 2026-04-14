@@ -38,6 +38,9 @@ jobs:
             - run: npm ci
             - run: npm run build
             - run: npm test
+              env:
+                  MONGO_URI: ${{ secrets.MONGO_URI }}
+                  MONGO_DB_NAME: ${{ secrets.MONGO_DB_NAME }}
 
     question-service:
         runs-on: ubuntu-latest
