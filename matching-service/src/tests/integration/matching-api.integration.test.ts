@@ -421,6 +421,19 @@ test('same-topic gap-2 difficulty only expands at 30s via API', async () => {
     assert.equal(statusBeforeWideExpansion.status, 200);
     assert.equal((statusBeforeWideExpansion.json as { state: string }).state, 'queued');
 
+    // Refresh heartbeat for first user to keep them eligible for matching within 20s window
+    const heartbeatRefresh = await withMockedNow(baseTimeMs + 25_000, async () =>
+        request(
+            'POST',
+            '/matching/heartbeat',
+            {
+                userId: 'user-gap-hard',
+            },
+            tokenHard,
+        ),
+    );
+    assert.equal(heartbeatRefresh.status, 200);
+
     const statusAtWideExpansion = await withMockedNow(baseTimeMs + 30_000, async () =>
         request('GET', '/matching/status/user-gap-easy', undefined, tokenEasy),
     );
