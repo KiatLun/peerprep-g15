@@ -1,8 +1,14 @@
 import { config } from '../config/env';
 
+let collabFetch: typeof fetch = fetch;
+
+export function setCollabServiceFetch(nextFetch?: typeof fetch) {
+    collabFetch = nextFetch ?? fetch;
+}
+
 export async function createCollabSession(roomId: string, userIds: string[], questionId: string) {
     try {
-        const res = await fetch(`${config.collaborationService.baseUrl}/internal/sessions`, {
+        const res = await collabFetch(`${config.collaborationService.baseUrl}/internal/sessions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
