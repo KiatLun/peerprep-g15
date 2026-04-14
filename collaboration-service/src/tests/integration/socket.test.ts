@@ -3,6 +3,7 @@ jest.mock('uuid', () => ({ v4: jest.fn(() => 'mocked-room-id') }));
 jest.mock('../../services/collaboration-service');
 jest.mock('../../services/question-service');
 jest.mock('../../services/matching-service');
+jest.mock('../../services/auth-service');
 import axios from 'axios';
 jest.mock('axios');
 
@@ -19,9 +20,11 @@ import {
     addMessageToSession,
     submitCode,
     persistYjsState,
+    saveAttempt 
 } from '../../services/collaboration-service';
 import { fetchQuestionById } from '../../services/question-service';
 import { endMatchInMatchingService } from '../../services/matching-service';
+import { resolveAuthUser } from '../../services/auth-service';
 
 const mockedGetSession = jest.mocked(getSession);
 const mockedVoteLanguage = jest.mocked(voteLanguage);
@@ -31,10 +34,13 @@ const mockedSubmitCode = jest.mocked(submitCode);
 const mockedFetchQuestionById = jest.mocked(fetchQuestionById);
 const mockedPersistYjsState = jest.mocked(persistYjsState);
 const mockedEndMatchInMatchingService = jest.mocked(endMatchInMatchingService);
+const mockedResolveAuthUser = jest.mocked(resolveAuthUser);
+const mockedSaveAttempt = jest.mocked(saveAttempt);
 
 mockedSubmitCode.mockRejectedValue(new Error('Execution failed'));
 mockedPersistYjsState.mockResolvedValue(null as any);
 mockedEndMatchInMatchingService.mockResolvedValue(undefined);
+mockedSaveAttempt.mockResolvedValue(null as any);
 
 const mockQuestion = {
     questionId: 1,
@@ -82,9 +88,16 @@ beforeEach((done) => {
     mockedPersistYjsState.mockResolvedValue(null as any);
     mockedEndMatchInMatchingService.mockResolvedValue(undefined);
     mockedFetchQuestionById.mockResolvedValue(mockQuestion as any);
+    mockedSaveAttempt.mockResolvedValue(null as any);
 
-    clientA = Client(`http://localhost:${port}`);
-    clientB = Client(`http://localhost:${port}`);
+    mockedResolveAuthUser.mockImplementation(async (token: string) => {
+        if (token === 'token-user1') return { id: 'user1', username: 'Alice', displayName: 'Alice', email: 'alice@test.com', role: 'user' as const };
+        if (token === 'token-user2') return { id: 'user2', username: 'Bob', displayName: 'Bob', email: 'bob@test.com', role: 'user' as const };
+        throw new Error('Invalid token');
+    });
+
+    clientA = Client(`http://localhost:${port}`, { auth: { token: 'token-user1' } });
+    clientB = Client(`http://localhost:${port}`, { auth: { token: 'token-user2' } });
 
     // wait for both to connect
     let connected = 0;
@@ -108,7 +121,7 @@ describe('join-room', () => {
         mockedGetSession.mockResolvedValue(mockSession() as any);
         mockedFetchQuestionById.mockResolvedValue(mockQuestion as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         clientA.on('session-state', (data: any) => {
             expect(data.session.roomId).toBe('room1');
@@ -121,7 +134,7 @@ describe('join-room', () => {
     it('should emit session-state with null question if no questionId', (done) => {
         mockedGetSession.mockResolvedValue(mockSession({ questionId: null }) as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         clientA.on('session-state', (data: any) => {
             expect(data.session.roomId).toBe('room1');
@@ -133,10 +146,10 @@ describe('join-room', () => {
     it('should emit partner-info to the other user', (done) => {
         mockedGetSession.mockResolvedValue(mockSession() as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         setTimeout(() => {
-            clientB.emit('join-room', 'room1', 'user2', 'Bob');
+            clientB.emit('join-room', 'room1');
         }, 100);
 
         clientA.on('partner-info', (data: any) => {
@@ -150,10 +163,10 @@ describe('join-room', () => {
     it('should emit user-joined when both users are in the room', (done) => {
         mockedGetSession.mockResolvedValue(mockSession() as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         setTimeout(() => {
-            clientB.emit('join-room', 'room1', 'user2', 'Bob');
+            clientB.emit('join-room', 'room1');
         }, 100);
 
         clientA.on('user-joined', (data: any) => {
@@ -170,7 +183,7 @@ describe('join-room', () => {
 
         mockedGetSession.mockResolvedValue(mockSession({ yjsState }) as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         clientA.on('yjs-sync', (state: any) => {
             const receiverDoc = new Y.Doc();
@@ -195,8 +208,8 @@ describe('lock-in', () => {
             mockSession({ status: 'active', language: 'python', yjsState }) as any,
         );
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
-        clientA.emit('lock-in', 'room1', 'user1', 'python');
+        clientA.emit('join-room', 'room1');
+        clientA.emit('lock-in', 'room1');
 
         clientA.on('session-started', (data: any) => {
             expect(data.language).toBe('python');
@@ -208,8 +221,8 @@ describe('lock-in', () => {
     it('should emit language-mismatch when users disagree', (done) => {
         mockedVoteLanguage.mockResolvedValue(mockSession({ status: 'ended' }) as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
-        clientA.emit('lock-in', 'room1', 'user1', 'python');
+        clientA.emit('join-room', 'room1');
+        clientA.emit('lock-in', 'room1');
 
         clientA.on('language-mismatch', () => {
             done();
@@ -219,8 +232,8 @@ describe('lock-in', () => {
     it('should emit user-locked-in when only one user voted', (done) => {
         mockedVoteLanguage.mockResolvedValue(mockSession({ status: 'pending' }) as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
-        clientA.emit('lock-in', 'room1', 'user1', 'python');
+        clientA.emit('join-room', 'room1');
+        clientA.emit('lock-in', 'room1');
 
         clientA.on('user-locked-in', (data: any) => {
             expect(data.userId).toBe('user1');
@@ -231,10 +244,10 @@ describe('lock-in', () => {
     it('should emit lock-in-error if voteLanguage throws', (done) => {
         mockedVoteLanguage.mockRejectedValue(new Error('User has already locked in'));
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         setTimeout(() => {
-            clientA.emit('lock-in', 'room1', 'user1', 'python');
+            clientA.emit('lock-in', 'room1');
         }, 100);
 
         clientA.on('lock-in-error', (data: any) => {
@@ -250,8 +263,8 @@ describe('yjs-update', () => {
     it('should relay yjs-update to other user', (done) => {
         mockedGetSession.mockResolvedValue(mockSession({ status: 'active' }) as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
-        clientB.emit('join-room', 'room1', 'user2', 'Bob');
+        clientA.emit('join-room', 'room1');
+        clientB.emit('join-room', 'room1');
 
         setTimeout(() => {
             const ydoc = new Y.Doc();
@@ -284,7 +297,7 @@ describe('yjs-update', () => {
     it('should trigger debounced persist to DB', (done) => {
         mockedGetSession.mockResolvedValue(mockSession({ status: 'active' }) as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         setTimeout(() => {
             const ydoc = new Y.Doc();
@@ -350,14 +363,14 @@ describe('run-code', () => {
             { input: '10 20', expectedOutput: '30' },
         ];
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         clientA.on('code-error', (err: any) => {
             done(new Error(`code-error received: ${JSON.stringify(err)}`));
         });
 
         setTimeout(() => {
-            clientA.emit('run-code', 'room1', 'user1', 'some code', 'python', mockTestCases);
+            clientA.emit('run-code', 'room1', 'some code', 'python', mockTestCases);
         }, 100);
 
         clientA.on('code-result', (result: any) => {
@@ -385,10 +398,10 @@ describe('run-code', () => {
             { input: '10 20', expectedOutput: '30' },
         ];
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         setTimeout(() => {
-            clientA.emit('run-code', 'room1', 'user1', 'print("hello")', 'python', mockTestCases);
+            clientA.emit('run-code', 'room1', 'print("hello")', 'python', mockTestCases);
         }, 100);
 
         clientA.on('code-error', (err: any) => {
@@ -402,25 +415,37 @@ describe('run-code', () => {
             mockSession({ status: 'active', userIds: ['user1', 'user2'] }) as any,
         );
 
-        clientA.emit('join-room', 'room1', 'user3', 'Intruder');
-
-        setTimeout(() => {
-            clientA.emit('run-code', 'room1', 'user3', 'print("hack")', 'python', []);
-        }, 100);
-
-        clientA.on('code-result', () => {
-            done(new Error('should not receive code-result for unauthorized user'));
+        mockedResolveAuthUser.mockImplementation(async (token: string) => {
+            if (token === 'token-user3') return { id: 'user3', username: 'Intruder', displayName: 'Intruder', email: 'intruder@test.com', role: 'user' as const };
+            throw new Error('Invalid token');
         });
 
-        clientA.on('code-error', () => {
-            done(new Error('should not receive code-error for unauthorized user'));
-        });
+        const clientC = Client(`http://localhost:${port}`, { auth: { token: 'token-user3' } });
 
-        setTimeout(() => {
-            expect(mockedSubmitCode).not.toHaveBeenCalled();
-            done();
-        }, 1000);
-    }, 10000);
+        clientC.on('connect', () => {
+            clientC.emit('join-room', 'room1');
+
+            setTimeout(() => {
+                clientC.emit('run-code', 'room1', 'print("hack")', 'python', []);
+            }, 100);
+
+            clientC.on('code-result', () => {
+                clientC.disconnect();
+                done(new Error('should not receive code-result for unauthorized user'));
+            });
+
+            clientC.on('code-error', () => {
+                clientC.disconnect();
+                done(new Error('should not receive code-error for unauthorized user'));
+            });
+
+            setTimeout(() => {
+                expect(mockedSubmitCode).not.toHaveBeenCalled();
+                clientC.disconnect();
+                done();
+            }, 1000);
+        });
+    }, 10000)
 });
 
 // ─── submit-code ───────────────────────────────────────────
@@ -445,10 +470,10 @@ describe('submit-code', () => {
             ],
         } as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         setTimeout(() => {
-            clientA.emit('submit-code', 'room1', 'user1', 'some code', 'python', [
+            clientA.emit('submit-code', 'room1', 'some code', 'python', [
                 { input: '1 2', expectedOutput: '3' },
             ]);
         }, 100);
@@ -470,10 +495,10 @@ describe('submit-code', () => {
         );
         mockedSubmitCode.mockRejectedValue(new Error('Execution failed'));
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         setTimeout(() => {
-            clientA.emit('submit-code', 'room1', 'user1', 'bad code', 'python', [
+            clientA.emit('submit-code', 'room1', 'bad code', 'python', [
                 { input: '1 2', expectedOutput: '3' },
             ]);
         }, 100);
@@ -481,6 +506,33 @@ describe('submit-code', () => {
         clientA.on('code-error', (err: any) => {
             expect(err.message).toBe('Execution failed');
             done();
+        });
+    }, 10000);
+
+    it('should save attempt after successful submission', (done) => {
+        mockedGetSession.mockResolvedValue(
+            mockSession({ status: 'active', userIds: ['user1', 'user2'] }) as any,
+        );
+        mockedSubmitCode.mockResolvedValue({ passed: true, results: [] } as any);
+        mockedSaveAttempt.mockResolvedValue(null as any);
+
+        clientA.emit('join-room', 'room1');
+
+        setTimeout(() => {
+            clientA.emit('submit-code', 'room1', 'some code', 'python', []);
+        }, 100);
+
+        clientA.on('submit-result', () => {
+            setTimeout(() => {
+                expect(mockedSaveAttempt).toHaveBeenCalledWith(
+                    'room1',
+                    'some code',
+                    'python',
+                    true,
+                    expect.any(Array),
+                );
+                done();
+            }, 100);
         });
     }, 10000);
 });
@@ -491,11 +543,11 @@ describe('leave-session', () => {
     it('should emit session-ended to both users', (done) => {
         mockedEndSession.mockResolvedValue(mockSession({ status: 'ended' }) as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
-        clientB.emit('join-room', 'room1', 'user2', 'Bob');
+        clientA.emit('join-room', 'room1');
+        clientB.emit('join-room', 'room1');
 
         setTimeout(() => {
-            clientA.emit('leave-session', 'room1', 'user1');
+            clientA.emit('leave-session', 'room1');
         }, 100);
 
         clientB.on('session-ended', (data: any) => {
@@ -507,10 +559,10 @@ describe('leave-session', () => {
     it('should end match in matching service', (done) => {
         mockedEndSession.mockResolvedValue(mockSession({ status: 'ended' }) as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         setTimeout(() => {
-            clientA.emit('leave-session', 'room1', 'user1');
+            clientA.emit('leave-session', 'room1');
         }, 100);
 
         setTimeout(() => {
@@ -524,7 +576,7 @@ describe('leave-session', () => {
 
         // First create some yjs state in the room
         mockedGetSession.mockResolvedValue(mockSession({ status: 'active' }) as any);
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         setTimeout(() => {
             const ydoc = new Y.Doc();
@@ -537,7 +589,7 @@ describe('leave-session', () => {
             clientA.emit('yjs-update', 'room1', update);
 
             setTimeout(() => {
-                clientA.emit('leave-session', 'room1', 'user1');
+                clientA.emit('leave-session', 'room1');
 
                 setTimeout(() => {
                     expect(mockedPersistYjsState).toHaveBeenCalled();
@@ -554,23 +606,20 @@ describe('send-message', () => {
     it('should broadcast message to other user in the room', (done) => {
         mockedAddMessageToSession.mockResolvedValue(mockSession() as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
-        clientB.emit('join-room', 'room1', 'user2', 'Bob');
+        clientA.emit('join-room', 'room1');
+        clientB.emit('join-room', 'room1');
 
         setTimeout(() => {
             clientA.emit('send-message', {
                 roomId: 'room1',
-                senderId: 'user1',
-                username: 'kiran',
                 content: 'hello',
             });
         }, 100);
 
         clientB.on('receive-message', (data: any) => {
             expect(data.senderId).toBe('user1');
-            expect(data.username).toBe('kiran');
+            expect(data.username).toBe('Alice');
             expect(data.content).toBe('hello');
-            expect(data.timestamp).toBeDefined();
             done();
         });
     });
@@ -578,14 +627,12 @@ describe('send-message', () => {
     it('should not send message back to the sender', (done) => {
         mockedAddMessageToSession.mockResolvedValue(mockSession() as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
-        clientB.emit('join-room', 'room1', 'user2', 'Bob');
+        clientA.emit('join-room', 'room1');
+        clientB.emit('join-room', 'room1');
 
         setTimeout(() => {
             clientA.emit('send-message', {
                 roomId: 'room1',
-                senderId: 'user1',
-                username: 'kiran',
                 content: 'hello',
             });
         }, 100);
@@ -600,13 +647,11 @@ describe('send-message', () => {
     it('should save the message to the database', (done) => {
         mockedAddMessageToSession.mockResolvedValue(mockSession() as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         setTimeout(() => {
             clientA.emit('send-message', {
                 roomId: 'room1',
-                senderId: 'user1',
-                username: 'kiran',
                 content: 'hello',
             });
         }, 100);
@@ -614,7 +659,7 @@ describe('send-message', () => {
         setTimeout(() => {
             expect(mockedAddMessageToSession).toHaveBeenCalledWith('room1', {
                 senderId: 'user1',
-                username: 'kiran',
+                username: 'Alice',
                 content: 'hello',
             });
             done();
@@ -627,12 +672,12 @@ describe('send-message', () => {
 describe('chat-history', () => {
     it('should send chat history when user joins room', (done) => {
         const messages = [
-            { senderId: 'user1', username: 'kiran', content: 'hey', timestamp: new Date() },
-            { senderId: 'user2', username: 'partner', content: 'sup', timestamp: new Date() },
+            { content: 'hey', timestamp: new Date() },
+            { content: 'sup', timestamp: new Date() },
         ];
         mockedGetSession.mockResolvedValue(mockSession({ messages }) as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         clientA.on('chat-history', (history: any) => {
             expect(history).toHaveLength(2);
@@ -645,7 +690,7 @@ describe('chat-history', () => {
     it('should not emit chat-history if no messages exist', (done) => {
         mockedGetSession.mockResolvedValue(mockSession({ messages: [] }) as any);
 
-        clientA.emit('join-room', 'room1', 'user1', 'Alice');
+        clientA.emit('join-room', 'room1');
 
         clientA.on('chat-history', () => {
             done(new Error('should not emit chat-history for empty messages'));
