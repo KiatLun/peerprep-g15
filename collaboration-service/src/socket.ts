@@ -74,7 +74,6 @@ export function initSocket(server: http.Server) {
         }
     });
 
-
     io.on('connection', (socket) => {
         console.log('user connected:', socket.id);
 
@@ -109,7 +108,6 @@ export function initSocket(server: http.Server) {
                 disconnectTimers.delete(userId);
                 io.to(roomId).emit('user-reconnected', { userId });
             }
-
 
             if (!roomDocs.has(roomId) && session?.yjsState) {
                 const doc = new Y.Doc();
@@ -336,7 +334,6 @@ export function initSocket(server: http.Server) {
                 timestamp: new Date(),
             });
         });
-
     });
 
     return io;

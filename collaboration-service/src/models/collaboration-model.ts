@@ -27,13 +27,15 @@ const sessionSchema = new mongoose.Schema(
             },
         ],
         yjsState: { type: Buffer, default: null },
-        attempts: [{
-            code: String,
-            language: String,
-            passed: Boolean,
-            results: Schema.Types.Mixed,
-            submittedAt: { type: Date, default: Date.now },
-        }],
+        attempts: [
+            {
+                code: String,
+                language: String,
+                passed: Boolean,
+                results: Schema.Types.Mixed,
+                submittedAt: { type: Date, default: Date.now },
+            },
+        ],
     },
     { timestamps: true },
 );

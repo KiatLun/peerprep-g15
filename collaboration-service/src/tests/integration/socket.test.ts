@@ -20,7 +20,7 @@ import {
     addMessageToSession,
     submitCode,
     persistYjsState,
-    saveAttempt 
+    saveAttempt,
 } from '../../services/collaboration-service';
 import { fetchQuestionById } from '../../services/question-service';
 import { endMatchInMatchingService } from '../../services/matching-service';
@@ -91,8 +91,22 @@ beforeEach((done) => {
     mockedSaveAttempt.mockResolvedValue(null as any);
 
     mockedResolveAuthUser.mockImplementation(async (token: string) => {
-        if (token === 'token-user1') return { id: 'user1', username: 'Alice', displayName: 'Alice', email: 'alice@test.com', role: 'user' as const };
-        if (token === 'token-user2') return { id: 'user2', username: 'Bob', displayName: 'Bob', email: 'bob@test.com', role: 'user' as const };
+        if (token === 'token-user1')
+            return {
+                id: 'user1',
+                username: 'Alice',
+                displayName: 'Alice',
+                email: 'alice@test.com',
+                role: 'user' as const,
+            };
+        if (token === 'token-user2')
+            return {
+                id: 'user2',
+                username: 'Bob',
+                displayName: 'Bob',
+                email: 'bob@test.com',
+                role: 'user' as const,
+            };
         throw new Error('Invalid token');
     });
 
@@ -416,7 +430,14 @@ describe('run-code', () => {
         );
 
         mockedResolveAuthUser.mockImplementation(async (token: string) => {
-            if (token === 'token-user3') return { id: 'user3', username: 'Intruder', displayName: 'Intruder', email: 'intruder@test.com', role: 'user' as const };
+            if (token === 'token-user3')
+                return {
+                    id: 'user3',
+                    username: 'Intruder',
+                    displayName: 'Intruder',
+                    email: 'intruder@test.com',
+                    role: 'user' as const,
+                };
             throw new Error('Invalid token');
         });
 
@@ -445,7 +466,7 @@ describe('run-code', () => {
                 done();
             }, 1000);
         });
-    }, 10000)
+    }, 10000);
 });
 
 // ─── submit-code ───────────────────────────────────────────
