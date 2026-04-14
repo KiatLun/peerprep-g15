@@ -26,6 +26,16 @@ jobs:
             run:
                 working-directory: user-service
 
+        env:
+            MONGO_URI: ${{ secrets.MONGO_URI }}
+            MONGO_DB_NAME: ${{ secrets.MONGO_DB_NAME }}
+            JWT_SECRET: ${{ secrets.JWT_SECRET }}
+            JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+            JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
+            JWT_REFRESH_EXPIRES_IN: ${{ secrets.JWT_REFRESH_EXPIRES_IN }}
+            BCRYPT_SALT_ROUNDS: ${{ secrets.BCRYPT_SALT_ROUNDS }}
+            INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
+
         steps:
             - uses: actions/checkout@v4
 
@@ -38,9 +48,6 @@ jobs:
             - run: npm ci
             - run: npm run build
             - run: npm test
-              env:
-                  MONGO_URI: ${{ secrets.MONGO_URI }}
-                  MONGO_DB_NAME: ${{ secrets.MONGO_DB_NAME }}
 
     question-service:
         runs-on: ubuntu-latest
