@@ -259,6 +259,30 @@ class MongoMatchingRepository implements MatchingRepository {
                 return match;
             });
 
+            if (maybeMatch) {
+                if (maybeMatch.question) {
+                    await createCollabSession(
+                        maybeMatch.matchId,
+                        maybeMatch.userIds,
+                        String(maybeMatch.question.questionId),
+                    );
+                }
+
+                const waitingUser = maybeMatch.userIds[0];
+                const waitingEntry: QueueEntry = {
+                    userId: waitingUser,
+                    topic: maybeMatch.topic,
+                    difficulty: maybeMatch.difficulty,
+                    joinedAt: new Date(nowMs).toISOString(),
+                };
+
+                await Promise.all([
+                    safeRecordQueueEvent(waitingEntry, 'matched', nowMs, maybeMatch.matchId),
+                    safeRecordQueueEvent(entry, 'matched', nowMs, maybeMatch.matchId),
+                    safeRecordMatchHistory(maybeMatch),
+                ]);
+            }
+
             return maybeMatch ?? null;
         } catch (error) {
             if (isAtomicMatchConflictError(error)) {
@@ -686,6 +710,10 @@ async function attemptMatchForEntry(
     }
 
     const queuedUsers = await repository.listQueuedUsers(nowMs);
+    console.log('Attempting match for user', {
+        userId: entry.userId,
+        queuedUserIds: queuedUsers.map((user) => user.userId),
+    });
     const waitingUser = findBestWaitingCandidate(queuedUsers, entry, nowMs);
     if (!waitingUser) {
         return null;
@@ -739,6 +767,19 @@ async function attemptMatchForEntry(
     }
 
     await createCollabSession(match.matchId, match.userIds, String(match.question.questionId));
+
+    console.log('Match created', {
+        matchId: match.matchId,
+        userIds: match.userIds,
+        topic: match.topic,
+        difficulty: match.difficulty,
+        questionId: match.question.questionId,
+    });
+
+    console.log('Room created for match', {
+        matchId: match.matchId,
+        roomId: `match_${match.matchId}`,
+    });
 
     await Promise.all([
         safeRecordQueueEvent(waitingUser, 'matched', nowMs, match.matchId),
