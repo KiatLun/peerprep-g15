@@ -7,12 +7,14 @@ import {
     endSession,
     handleDisconnect,
     submitCode,
+    saveAttempt,
     addMessageToSession,
     persistYjsState,
 } from './services/collaboration-service';
 import { ExecutionSpec, TestCase } from './types/execution';
 import { fetchQuestionById } from './services/question-service';
 import { endMatchInMatchingService } from './services/matching-service';
+import { resolveAuthUser } from './services/auth-service';
 
 const disconnectTimers = new Map<string, NodeJS.Timeout>();
 const languageTimers = new Map<string, NodeJS.Timeout>();
@@ -58,10 +60,32 @@ export function initSocket(server: http.Server) {
         cors: { origin: '*' },
     });
 
+    io.use(async (socket, next) => {
+        const token = socket.handshake.auth.token;
+        if (!token) return next(new Error('Missing auth token'));
+
+        try {
+            const user = await resolveAuthUser(token);
+            socket.data.userId = user.id;
+            socket.data.username = user.username;
+            next();
+        } catch (err) {
+            next(new Error('Invalid or expired token'));
+        }
+    });
+
     io.on('connection', (socket) => {
         console.log('user connected:', socket.id);
 
-        socket.on('join-room', async (roomId: string, userId: string, username: string) => {
+        socket.on('join-room', async (roomId: string) => {
+            const { userId, username } = socket.data;
+            const session = await getSession(roomId);
+
+            if (!session || !session.userIds.includes(userId)) {
+                socket.emit('join-error', { message: 'Invalid session or user' });
+                return;
+            }
+
             socket.join(roomId);
             socket.data.roomId = roomId;
             socket.data.userId = userId;
@@ -84,8 +108,6 @@ export function initSocket(server: http.Server) {
                 disconnectTimers.delete(userId);
                 io.to(roomId).emit('user-reconnected', { userId });
             }
-
-            const session = await getSession(roomId);
 
             if (!roomDocs.has(roomId) && session?.yjsState) {
                 const doc = new Y.Doc();
@@ -119,6 +141,7 @@ export function initSocket(server: http.Server) {
                     const currentSession = await getSession(roomId);
                     if (currentSession?.status === 'pending') {
                         await endSession(roomId);
+                        await endMatchInMatchingService(roomId);
                         io.to(roomId).emit('language-timeout');
                     }
                 }, 30000);
@@ -127,8 +150,9 @@ export function initSocket(server: http.Server) {
             }
         });
 
-        socket.on('lock-in', async (roomId: string, userId: string, language: string) => {
+        socket.on('lock-in', async (roomId: string, language: string) => {
             try {
+                const { userId } = socket.data;
                 const session = await voteLanguage(roomId, userId, language);
 
                 if (session?.status === 'active') {
@@ -148,6 +172,7 @@ export function initSocket(server: http.Server) {
                 } else if (session?.status === 'ended') {
                     clearTimeout(languageTimers.get(roomId)!);
                     languageTimers.delete(roomId);
+                    await endMatchInMatchingService(roomId);
                     io.to(roomId).emit('language-mismatch');
                 } else {
                     io.to(roomId).emit('user-locked-in', { userId });
@@ -203,12 +228,12 @@ export function initSocket(server: http.Server) {
             'run-code',
             async (
                 roomId: string,
-                userId: string,
                 code: string,
                 language: string,
                 testCases: TestCase[],
                 executionSpec: ExecutionSpec,
             ) => {
+                const { userId } = socket.data;
                 const session = await getSession(roomId);
                 if (!session) return;
                 if (session.status !== 'active') return;
@@ -249,12 +274,12 @@ export function initSocket(server: http.Server) {
             'submit-code',
             async (
                 roomId: string,
-                userId: string,
                 code: string,
                 language: string,
                 testCases: TestCase[],
                 executionSpec: ExecutionSpec,
             ) => {
+                const { userId } = socket.data;
                 const session = await getSession(roomId);
                 if (!session || session.status !== 'active') return;
                 if (!session.userIds.includes(userId)) return;
@@ -270,6 +295,8 @@ export function initSocket(server: http.Server) {
                         testCases,
                         executionSpec,
                     );
+
+                    await saveAttempt(roomId, code, language, result.passed, result.results);
 
                     io.to(roomId).emit('submit-result', result);
                 } catch (err: any) {
@@ -291,16 +318,17 @@ export function initSocket(server: http.Server) {
         });
 
         socket.on('send-message', async (data) => {
-            const { roomId, senderId, username, content } = data;
+            const { roomId, content } = data;
+            const { userId, username } = socket.data;
 
             await addMessageToSession(roomId, {
-                senderId,
+                senderId: userId,
                 username,
                 content,
             });
 
             socket.to(roomId).emit('receive-message', {
-                senderId,
+                senderId: userId,
                 username,
                 content,
                 timestamp: new Date(),

@@ -129,6 +129,24 @@ export async function executeCode(roomId: string, code: string, language: string
     };
 }
 
+export async function saveAttempt(
+    roomId: string,
+    code: string,
+    language: string,
+    passed: boolean,
+    results: any,
+) {
+    return await Session.findOneAndUpdate(
+        { roomId },
+        {
+            $push: {
+                attempts: { code, language, passed, results, submittedAt: new Date() },
+            },
+        },
+        { new: true },
+    );
+}
+
 async function runSingleTestCase(
     code: string,
     language: string,
