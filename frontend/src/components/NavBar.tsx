@@ -82,6 +82,20 @@ const NavBar = ({ name }: { name: string }) => {
                             </button>
                         </li>
 
+                        {/* Conditionally render History option for users */}
+                        {role === 'user' && (
+                            <li>
+                                <button
+                                    className="dropdown-item"
+                                    w-idth="100%"
+                                    onClick={() => navigate('/history')}
+                                    style={{ color: 'black' }}
+                                >
+                                    History
+                                </button>
+                            </li>
+                        )}
+
                         <li>
                             <button
                                 className="dropdown-item"
