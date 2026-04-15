@@ -3,4 +3,5 @@ import matchingRouter from './matching-routes';
 
 export function registerRoutes(app: Express) {
     app.use('/matching', matchingRouter);
+    app.use('/internal/matching', matchingRouter);
 }
