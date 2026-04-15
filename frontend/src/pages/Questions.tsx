@@ -157,7 +157,9 @@ const Questions = () => {
                     <form onSubmit={handleSearch} className="bg-white rounded p-3 shadow-sm mb-4 ">
                         <div className="row g-3">
                             <div className="col-md-4">
-                                <label className="form-label">Difficulty</label>
+                                <label className="form-label" htmlFor="difficulty">
+                                    Difficulty
+                                </label>
                                 <select
                                     id="difficulty"
                                     className="form-select"
@@ -172,8 +174,11 @@ const Questions = () => {
                             </div>
 
                             <div className="col-md-4">
-                                <label className="form-label">Category</label>
+                                <label className="form-label" htmlFor="category">
+                                    Category
+                                </label>
                                 <select
+                                    id="category"
                                     className="form-select"
                                     value={category}
                                     onChange={(e) => setCategory(e.target.value)}

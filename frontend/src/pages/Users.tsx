@@ -168,8 +168,11 @@ const Users = () => {
                     <form onSubmit={handleSearch} className="bg-white rounded p-3 shadow-sm mb-4">
                         <div className="row g-3">
                             <div className="col-md-4">
-                                <label className="form-label">Username</label>
+                                <label className="form-label" htmlFor="username">
+                                    Username
+                                </label>
                                 <input
+                                    id="username"
                                     type="text"
                                     className="form-control"
                                     value={searchedUser}
@@ -178,8 +181,11 @@ const Users = () => {
                                 />
                             </div>
                             <div className="col-md-4">
-                                <label className="form-label">Role</label>
+                                <label className="form-label" htmlFor="role">
+                                    Role
+                                </label>
                                 <select
+                                    id="role"
                                     className="form-select"
                                     value={roleFilter}
                                     onChange={(e) => setRoleFilter(e.target.value)}
