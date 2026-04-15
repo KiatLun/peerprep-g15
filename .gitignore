@@ -140,3 +140,10 @@ vite.config.ts.timestamp-*
 
 # Claude md file
 **/Claude.md
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
