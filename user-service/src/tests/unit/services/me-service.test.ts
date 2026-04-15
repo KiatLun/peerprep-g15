@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import bcrypt from 'bcrypt';
+import mongoose from 'mongoose';
 import { MeService } from '../../../services/me-service';
 
 vi.mock('bcrypt', () => ({
     default: {
         compare: vi.fn(),
         hash: vi.fn(),
+    },
+}));
+
+vi.mock('mongoose', () => ({
+    default: {
+        startSession: vi.fn(),
     },
 }));
 
@@ -18,6 +25,11 @@ vi.mock('../../../models/user-model', () => ({
 }));
 
 import { UserModel } from '../../../models/user-model';
+
+const makeSession = () => ({
+    withTransaction: vi.fn(async (fn: () => Promise<unknown>) => await fn()),
+    endSession: vi.fn(),
+});
 
 describe('MeService.getMe', () => {
     beforeEach(() => {
@@ -275,52 +287,102 @@ describe('MeService.deleteMe', () => {
     });
 
     it('throws not found when user does not exist', async () => {
-        vi.mocked(UserModel.findById).mockResolvedValue(null);
+        const session = makeSession();
+        vi.mocked(mongoose.startSession).mockResolvedValue(session as any);
+
+        vi.mocked(UserModel.findById).mockReturnValue({
+            session: vi.fn().mockResolvedValue(null),
+        } as any);
 
         await expect(MeService.deleteMe('user-1')).rejects.toMatchObject({
             statusCode: 404,
             code: 'NOT_FOUND',
         });
+
+        expect(session.endSession).toHaveBeenCalled();
     });
 
     it('throws forbidden when deleting the last remaining admin', async () => {
-        vi.mocked(UserModel.findById).mockResolvedValue({
-            role: 'admin',
+        const session = makeSession();
+        vi.mocked(mongoose.startSession).mockResolvedValue(session as any);
+
+        vi.mocked(UserModel.findById).mockReturnValue({
+            session: vi.fn().mockResolvedValue({
+                role: 'admin',
+            }),
         } as any);
 
-        vi.mocked(UserModel.countDocuments).mockResolvedValue(1 as any);
+        const countSession = vi.fn().mockResolvedValue(1);
+        vi.mocked(UserModel.countDocuments).mockReturnValue({
+            session: countSession,
+        } as any);
 
         await expect(MeService.deleteMe('user-1')).rejects.toMatchObject({
             statusCode: 403,
             code: 'FORBIDDEN',
         });
+
+        expect(UserModel.countDocuments).toHaveBeenCalledWith({ role: 'admin' });
+        expect(countSession).toHaveBeenCalledWith(session);
+        expect(session.endSession).toHaveBeenCalled();
     });
 
     it('deletes a normal user successfully', async () => {
+        const session = makeSession();
+        vi.mocked(mongoose.startSession).mockResolvedValue(session as any);
+
         const deleteOne = vi.fn();
 
-        vi.mocked(UserModel.findById).mockResolvedValue({
-            role: 'user',
-            deleteOne,
+        vi.mocked(UserModel.findById).mockReturnValue({
+            session: vi.fn().mockResolvedValue({
+                role: 'user',
+                deleteOne,
+            }),
         } as any);
 
         await MeService.deleteMe('user-1');
 
-        expect(deleteOne).toHaveBeenCalled();
+        expect(mongoose.startSession).toHaveBeenCalled();
+        expect(session.withTransaction).toHaveBeenCalled();
+        expect(deleteOne).toHaveBeenCalledWith({ session });
+        expect(session.endSession).toHaveBeenCalled();
     });
 
     it('deletes an admin successfully when more than one admin exists', async () => {
+        const session = makeSession();
+        vi.mocked(mongoose.startSession).mockResolvedValue(session as any);
+
         const deleteOne = vi.fn();
 
-        vi.mocked(UserModel.findById).mockResolvedValue({
-            role: 'admin',
-            deleteOne,
+        vi.mocked(UserModel.findById).mockReturnValue({
+            session: vi.fn().mockResolvedValue({
+                role: 'admin',
+                deleteOne,
+            }),
         } as any);
 
-        vi.mocked(UserModel.countDocuments).mockResolvedValue(2 as any);
+        vi.mocked(UserModel.countDocuments).mockReturnValue({
+            session: vi.fn().mockResolvedValue(2),
+        } as any);
 
         await MeService.deleteMe('user-1');
 
-        expect(deleteOne).toHaveBeenCalled();
+        expect(deleteOne).toHaveBeenCalledWith({ session });
+        expect(session.endSession).toHaveBeenCalled();
+    });
+
+    it('ends the session when delete fails', async () => {
+        const session = makeSession();
+        vi.mocked(mongoose.startSession).mockResolvedValue(session as any);
+
+        vi.mocked(UserModel.findById).mockReturnValue({
+            session: vi.fn().mockResolvedValue({
+                role: 'user',
+                deleteOne: vi.fn().mockRejectedValue(new Error('delete failed')),
+            }),
+        } as any);
+
+        await expect(MeService.deleteMe('user-1')).rejects.toThrow('delete failed');
+        expect(session.endSession).toHaveBeenCalled();
     });
 });

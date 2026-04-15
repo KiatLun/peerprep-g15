@@ -447,6 +447,33 @@ describe('User service integration', () => {
             expect(res.body.error.code).toBe('CONFLICT');
         });
 
+        it('PATCH /me should invalidate the old refresh cookie after password change', async () => {
+            const registerRes = await request(app).post('/auth/register').send({
+                username: 'pwrotate',
+                displayName: 'PW Rotate',
+                email: 'pwrotate@example.com',
+                password: 'oldpassword123',
+            });
+
+            const cookie = getSetCookieHeader(registerRes);
+            const accessToken = registerRes.body.accessToken as string;
+
+            const patchRes = await request(app)
+                .patch('/me')
+                .set('Authorization', `Bearer ${accessToken}`)
+                .send({
+                    currentPassword: 'oldpassword123',
+                    newPassword: 'newpassword123',
+                });
+
+            expect(patchRes.status).toBe(200);
+
+            const refreshRes = await request(app).post('/auth/refresh').set('Cookie', cookie);
+
+            expect(refreshRes.status).toBe(401);
+            expect(refreshRes.body.error.code).toBe('UNAUTHORIZED');
+        });
+
         it('DELETE /me should delete a normal user account', async () => {
             const { user } = await createTestUser({
                 username: 'deleteme',
@@ -864,5 +891,117 @@ describe('User service integration', () => {
             expect(res.status).toBe(404);
             expect(res.body.error.code).toBe('NOT_FOUND');
         });
+    });
+
+    it('POST /admin/promote should invalidate the target user refresh cookie', async () => {
+        const { user: admin } = await createTestUser({
+            username: 'promoteadmin',
+            email: 'promoteadmin@example.com',
+            role: 'admin',
+        });
+
+        const registerRes = await request(app).post('/auth/register').send({
+            username: 'promotetarget',
+            displayName: 'Promote Target',
+            email: 'promotetarget@example.com',
+            password: 'password123',
+        });
+
+        const targetCookie = getSetCookieHeader(registerRes);
+        const adminAccessToken = makeAccessToken(admin._id.toString(), admin.role);
+
+        const promoteRes = await request(app)
+            .post('/admin/promote')
+            .set('Authorization', `Bearer ${adminAccessToken}`)
+            .send({ username: 'promotetarget' });
+
+        expect(promoteRes.status).toBe(200);
+        expect(promoteRes.body.user.role).toBe('admin');
+
+        const refreshRes = await request(app).post('/auth/refresh').set('Cookie', targetCookie);
+
+        expect(refreshRes.status).toBe(401);
+        expect(refreshRes.body.error.code).toBe('UNAUTHORIZED');
+    });
+
+    it('POST /admin/demote should invalidate the target admin refresh cookie', async () => {
+        const { user: actor } = await createTestUser({
+            username: 'demoteactor',
+            email: 'demoteactor@example.com',
+            role: 'admin',
+        });
+
+        const registerRes = await request(app).post('/auth/register').send({
+            username: 'demotetarget',
+            displayName: 'Demote Target',
+            email: 'demotetarget@example.com',
+            password: 'password123',
+        });
+
+        const actorAccessToken = makeAccessToken(actor._id.toString(), actor.role);
+
+        const promoteRes = await request(app)
+            .post('/admin/promote')
+            .set('Authorization', `Bearer ${actorAccessToken}`)
+            .send({ username: 'demotetarget' });
+
+        expect(promoteRes.status).toBe(200);
+        expect(promoteRes.body.user.role).toBe('admin');
+
+        const targetCookie = getSetCookieHeader(registerRes);
+
+        const demoteRes = await request(app)
+            .post('/admin/demote')
+            .set('Authorization', `Bearer ${actorAccessToken}`)
+            .send({ username: 'demotetarget' });
+
+        expect(demoteRes.status).toBe(200);
+        expect(demoteRes.body.user.role).toBe('user');
+
+        const refreshRes = await request(app).post('/auth/refresh').set('Cookie', targetCookie);
+
+        expect(refreshRes.status).toBe(401);
+        expect(refreshRes.body.error.code).toBe('UNAUTHORIZED');
+    });
+
+    it('POST /admin/demote should make the target old admin access token fail on admin routes', async () => {
+        const { user: actor } = await createTestUser({
+            username: 'dbcheckactor',
+            email: 'dbcheckactor@example.com',
+            role: 'admin',
+        });
+
+        const registerRes = await request(app).post('/auth/register').send({
+            username: 'dbchecktarget',
+            displayName: 'DB Check Target',
+            email: 'dbchecktarget@example.com',
+            password: 'password123',
+        });
+
+        const actorAccessToken = makeAccessToken(actor._id.toString(), actor.role);
+
+        const promoteRes = await request(app)
+            .post('/admin/promote')
+            .set('Authorization', `Bearer ${actorAccessToken}`)
+            .send({ username: 'dbchecktarget' });
+
+        expect(promoteRes.status).toBe(200);
+
+        const targetId = promoteRes.body.user.id as string;
+        const staleAdminToken = makeAccessToken(targetId, 'admin');
+
+        const demoteRes = await request(app)
+            .post('/admin/demote')
+            .set('Authorization', `Bearer ${actorAccessToken}`)
+            .send({ username: 'dbchecktarget' });
+
+        expect(demoteRes.status).toBe(200);
+
+        const adminHomeRes = await request(app)
+            .get('/admin/home')
+            .set('Authorization', `Bearer ${staleAdminToken}`);
+
+        expect(adminHomeRes.status).toBe(403);
+        expect(adminHomeRes.body.error.code).toBe('FORBIDDEN');
     });
 });

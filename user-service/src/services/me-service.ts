@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import { UserModel, type SkillLevel } from '../models/user-model';
 import { AppError } from '../utils/app-error';
+import mongoose from 'mongoose';
 
 type UpdateMeInput = {
     username?: string;
@@ -71,16 +72,26 @@ export class MeService {
     }
 
     static async deleteMe(userId: string) {
-        const user = await UserModel.findById(userId);
-        if (!user) throw AppError.notFound('User not found');
+        const session = await mongoose.startSession();
 
-        if (user.role === 'admin') {
-            const adminCount = await UserModel.countDocuments({ role: 'admin' });
-            if (adminCount <= 1) {
-                throw AppError.forbidden('Cannot delete the last remaining admin');
-            }
+        try {
+            await session.withTransaction(async () => {
+                const user = await UserModel.findById(userId).session(session);
+                if (!user) throw AppError.notFound('User not found');
+
+                if (user.role === 'admin') {
+                    const adminCount = await UserModel.countDocuments({ role: 'admin' }).session(
+                        session,
+                    );
+                    if (adminCount <= 1) {
+                        throw AppError.forbidden('Cannot delete the last remaining admin');
+                    }
+                }
+
+                await user.deleteOne({ session });
+            });
+        } finally {
+            await session.endSession();
         }
-
-        await user.deleteOne();
     }
 }
