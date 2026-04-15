@@ -5,11 +5,11 @@ import Home from './pages/Home';
 import Admin from './pages/Admin';
 import AddQuestion from './pages/AddQuestion';
 import Questions from './pages/Questions';
-import MatchPage from './pages/MatchPage';
 import Collab from './pages/Collab';
 import Users from './pages/Users';
 import SignUp from './pages/SignUp';
 import EditQuestion from './pages/EditQuestion';
+import Settings from './pages/Settings';
 
 const App = () => {
     return (
@@ -17,8 +17,8 @@ const App = () => {
             <Routes>
                 <Route path="/" element={<Login />} />
                 <Route path="/signup" element={<SignUp />} />
+                <Route path="/settings" element={<Settings />} />
                 <Route path="/home" element={<Home />} />
-                <Route path="/home/match" element={<MatchPage />} />
                 <Route path="/collab/:roomId" element={<Collab />} />
                 <Route path="/admin/home" element={<Admin />} />
                 <Route path="/admin/questions" element={<Questions />} />

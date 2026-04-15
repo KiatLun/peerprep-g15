@@ -5,6 +5,16 @@ import authAxios from '../authAxios';
 
 const NavBar = ({ name }: { name: string }) => {
     const navigate = useNavigate();
+    const role = localStorage.getItem('role') || '';
+
+    const handleHomeClick = () => {
+        if (role === 'admin') {
+            navigate('/admin/home');
+        } else {
+            navigate('/home');
+        }
+    };
+
     const handleLogout = async () => {
         try {
             await authAxios.post('/auth/logout');
@@ -14,6 +24,7 @@ const NavBar = ({ name }: { name: string }) => {
             localStorage.removeItem('accessToken');
             localStorage.removeItem('name');
             localStorage.removeItem('userId');
+            localStorage.removeItem('role');
             navigate('/');
         }
     };
@@ -61,9 +72,25 @@ const NavBar = ({ name }: { name: string }) => {
 
                     <ul className="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
                         <li>
-                            <a className="dropdown-item" href="#">
+                            <button
+                                className="dropdown-item"
+                                w-idth="100%"
+                                onClick={handleHomeClick}
+                                style={{ color: 'black' }}
+                            >
+                                Home
+                            </button>
+                        </li>
+
+                        <li>
+                            <button
+                                className="dropdown-item"
+                                w-idth="100%"
+                                onClick={() => navigate('/settings')}
+                                style={{ color: 'black' }}
+                            >
                                 Settings
-                            </a>
+                            </button>
                         </li>
                         <li>
                             <button

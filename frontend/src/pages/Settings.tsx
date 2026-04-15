@@ -1,17 +1,19 @@
+import React, { useState, useEffect } from 'react';
 import '../App.css';
 import NavBar from '../components/NavBar.tsx';
 import userAxios from '../userAxios.ts';
-import { useState, useEffect } from 'react';
 import { Button, Card, FormControl } from 'react-bootstrap';
 
 type User = {
-    username: string;
-    displayName: string;
-    email: string;
-    role: string;
-    id: string;
-    updatedAt: string;
+    username: string | null;
+    displayName: string | null;
+    email: string | null;
+    role: string | null;
+    id: string | null;
+    updatedAt: string | null;
 };
+
+type UserFields = keyof User;
 
 const Settings = () => {
     const name = localStorage.getItem('name') || 'User';
@@ -19,7 +21,10 @@ const Settings = () => {
     const [userData, setUserData] = useState<User | null>(null); // State to store user information
     const [loading, setLoading] = useState(true); // Loading state
     const [editField, setEditField] = useState<string | null>(null); // Field currently being edited
-    const [updatedData, setUpdatedData] = useState<any>({}); // To store edited values
+    const [updatedData, setUpdatedData] = useState<Partial<User>>({}); // To store edited values
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [error, setError] = useState('');
 
     // Fetch user information on component mount
     useEffect(() => {
@@ -47,11 +52,11 @@ const Settings = () => {
     }, []); // Empty dependency array means this runs once when the component mounts
 
     // Handle the edit button click to switch the field into editing mode
-    const handleEditClick = (field: string) => {
+    const handleEditClick = (field: UserFields) => {
         setEditField(field);
         setUpdatedData({
             ...updatedData,
-            [field]: userData![field], // Use non-null assertion operator as userData is guaranteed to be set
+            [field]: userData ? userData[field] : '', // Use a fallback if userData is null
         });
     };
 
@@ -64,16 +69,47 @@ const Settings = () => {
     };
 
     // Save the updated data after editing
-    const handleSaveClick = async (field: string) => {
+    const handleSaveClick = async (field: UserFields) => {
         try {
-            await userAxios.patch('/me', { [field]: updatedData[field] }); // Update only the changed field
-            setUserData({
-                ...userData,
-                [field]: updatedData[field],
-            });
-            setEditField(null); // Exit edit mode
+            if (userData) {
+                const updatedValue =
+                    field === 'username' ? updatedData[field]?.toLowerCase() : updatedData[field];
+                console.log(`Saving updated ${field}:`, updatedValue);
+
+                await userAxios.patch('/me', { [field]: updatedValue }); // Update only the changed field
+                setUserData({
+                    ...userData,
+                    [field]: updatedData[field], // Update the userData with the new value
+                });
+                setEditField(null); // Exit edit mode
+            }
+            localStorage.setItem(
+                'name',
+                updatedData.displayName || userData?.displayName || 'User',
+            ); // Update name in localStorage
         } catch (error) {
             console.error('Error saving user data:', error);
+        }
+    };
+
+    // Save the password change
+    const handlesavePasswordClick = async () => {
+        const comfirmation = window.confirm('Are you sure you want to change your password?');
+        if (!comfirmation) return;
+        try {
+            await userAxios.patch('/me', {
+                currentPassword,
+                newPassword,
+            });
+            setCurrentPassword('');
+            setNewPassword('');
+            alert('Password updated successfully');
+            setError('');
+        } catch (error) {
+            console.error('Error updating password:', error);
+            setError(
+                'Failed to update password. Please check your current password and try again.',
+            );
         }
     };
 
@@ -102,12 +138,16 @@ const Settings = () => {
                                             {editField === 'username' ? (
                                                 <FormControl
                                                     value={
-                                                        updatedData.username || userData.username
+                                                        updatedData.username ||
+                                                        userData.username ||
+                                                        ''
                                                     }
-                                                    onChange={(e) => handleChange(e, 'username')}
+                                                    onChange={(e: any) =>
+                                                        handleChange(e, 'username')
+                                                    }
                                                 />
                                             ) : (
-                                                userData.username
+                                                userData.username?.toLowerCase()
                                             )}
                                         </Card.Text>
                                         <Button
@@ -132,9 +172,12 @@ const Settings = () => {
                                                 <FormControl
                                                     value={
                                                         updatedData.displayName ||
-                                                        userData.displayName
+                                                        userData.displayName ||
+                                                        ''
                                                     }
-                                                    onChange={(e) => handleChange(e, 'displayName')}
+                                                    onChange={(
+                                                        e: React.ChangeEvent<HTMLInputElement>,
+                                                    ) => handleChange(e, 'displayName')}
                                                 />
                                             ) : (
                                                 userData.displayName
@@ -160,8 +203,12 @@ const Settings = () => {
                                         <Card.Text>
                                             {editField === 'email' ? (
                                                 <FormControl
-                                                    value={updatedData.email || userData.email}
-                                                    onChange={(e) => handleChange(e, 'email')}
+                                                    value={
+                                                        updatedData.email || userData.email || ''
+                                                    }
+                                                    onChange={(
+                                                        e: React.ChangeEvent<HTMLInputElement>,
+                                                    ) => handleChange(e, 'email')}
                                                 />
                                             ) : (
                                                 userData.email
@@ -180,29 +227,27 @@ const Settings = () => {
                                     </Card.Body>
                                 </Card>
 
-                                {/* Role */}
+                                {/* Password */}
                                 <Card className="mb-3">
                                     <Card.Body>
-                                        <Card.Title>Role</Card.Title>
+                                        <Card.Title>Password</Card.Title>
                                         <Card.Text>
-                                            {editField === 'role' ? (
-                                                <FormControl
-                                                    value={updatedData.role || userData.role}
-                                                    onChange={(e) => handleChange(e, 'role')}
-                                                />
-                                            ) : (
-                                                userData.role
-                                            )}
+                                            <FormControl
+                                                type="password"
+                                                placeholder="Current Password"
+                                                value={currentPassword}
+                                                onChange={(e) => setCurrentPassword(e.target.value)}
+                                            />
+                                            <FormControl
+                                                type="password"
+                                                placeholder="New Password"
+                                                value={newPassword}
+                                                onChange={(e) => setNewPassword(e.target.value)}
+                                            />
                                         </Card.Text>
-                                        <Button
-                                            variant="primary"
-                                            onClick={() =>
-                                                editField === 'role'
-                                                    ? handleSaveClick('role')
-                                                    : handleEditClick('role')
-                                            }
-                                        >
-                                            {editField === 'role' ? 'Save' : 'Edit'}
+                                        {error && <p style={{ color: 'red' }}>{error}</p>}
+                                        <Button variant="primary" onClick={handlesavePasswordClick}>
+                                            Save Password
                                         </Button>
                                     </Card.Body>
                                 </Card>

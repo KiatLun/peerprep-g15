@@ -1,4 +1,4 @@
-import { HouseFill, FileTextFill, PeopleFill, GearFill } from 'react-bootstrap-icons';
+import { HouseFill, FileTextFill, PeopleFill } from 'react-bootstrap-icons';
 import { useNavigate } from 'react-router';
 
 const AdminNavBar = () => {
@@ -34,15 +34,6 @@ const AdminNavBar = () => {
                     >
                         <PeopleFill className="me-2" />
                         Users
-                    </button>
-                </li>
-                <li>
-                    <button
-                        className="btn text-light text-start"
-                        onClick={() => navigate('/admin/settings')}
-                    >
-                        <GearFill className="me-2" />
-                        Settings
                     </button>
                 </li>
             </ul>

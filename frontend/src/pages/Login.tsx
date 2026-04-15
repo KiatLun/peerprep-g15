@@ -49,6 +49,7 @@ const Login = () => {
 
             //check to navigate to admin or user home page based on role
             const role: string = response.data.user.role;
+            localStorage.setItem('role', role); // Store user role in localStorage
             if (role === 'admin') {
                 navigate('/admin/home');
             } else {

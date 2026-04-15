@@ -1,7 +1,6 @@
-import { HouseFill, FileTextFill, PeopleFill, GearFill } from 'react-bootstrap-icons';
-
-import { useNavigate } from 'react-router';
+import '../App.css';
 import NavBar from '../components/NavBar.tsx';
+import AdminNavBar from '../components/AdminNavBar.tsx';
 import questionAxios from '../questionAxios.ts';
 import { useState, useEffect, useMemo } from 'react';
 import userAxios from '../userAxios.ts';
@@ -23,7 +22,6 @@ type User = {
 };
 
 const Admin = () => {
-    const navigate = useNavigate();
     const name = localStorage.getItem('name') || 'Admin';
 
     const [questions, setQuestions] = useState<Question[]>([]);
@@ -58,6 +56,7 @@ const Admin = () => {
             setQuestions(mappedQuestions);
             setUsers(mappedUsers);
         } catch (error) {
+            console.log('Error fetching dashboard data:', error);
             console.error('Error fetching dashboard data:', error);
         } finally {
             setLoading(false);
@@ -101,50 +100,7 @@ const Admin = () => {
         <div>
             <NavBar name={name} />
             <div className="d-flex min-vh-100 bg-dark text-white">
-                <div
-                    className="d-flex flex-column flex-shrink-0 p-4"
-                    style={{ width: '200px', backgroundColor: '#606060' }}
-                >
-                    <ul className="nav nav-pills flex-column mb-auto gap-2">
-                        <li className="nav-item">
-                            <button
-                                className="btn text-light text-start"
-                                onClick={() => navigate('/admin/home')}
-                            >
-                                <HouseFill className="me-2" />
-                                Dashboard
-                            </button>
-                        </li>
-                        <li>
-                            <button
-                                className="btn text-light text-start"
-                                onClick={() => navigate('/admin/questions')}
-                            >
-                                <FileTextFill className="me-2" />
-                                Questions
-                            </button>
-                        </li>
-                        <li>
-                            <button
-                                className="btn text-light text-start"
-                                onClick={() => navigate('/admin/users')}
-                            >
-                                <PeopleFill className="me-2" />
-                                Users
-                            </button>
-                        </li>
-                        <li>
-                            <button
-                                className="btn text-light text-start"
-                                onClick={() => navigate('/admin/settings')}
-                            >
-                                <GearFill className="me-2" />
-                                Settings
-                            </button>
-                        </li>
-                    </ul>
-                </div>
-
+                <AdminNavBar />
                 <div className="flex-grow-1 p-4" style={{ backgroundColor: '#686868' }}>
                     <div className="d-flex justify-content-between align-items-center mb-4">
                         <h2 className="fw-bold text-warning">Admin Dashboard</h2>

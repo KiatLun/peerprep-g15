@@ -1,10 +1,10 @@
-import { HouseFill, FileTextFill, PeopleFill, GearFill } from 'react-bootstrap-icons';
-
+import '../App.css';
 import { useNavigate } from 'react-router';
 import NavBar from '../components/NavBar.tsx';
 import { useState, useEffect } from 'react';
 import questionAxios from '../questionAxios.ts';
 import { useMemo } from 'react';
+import AdminNavBar from '../components/AdminNavBar.tsx';
 
 type Question = {
     questionId: number;
@@ -99,49 +99,7 @@ const Questions = () => {
         <div>
             <NavBar name={name} />
             <div className="d-flex min-vh-100 bg-dark text-white">
-                <div
-                    className="d-flex flex-column flex-shrink-0 p-4"
-                    style={{ width: '200px', backgroundColor: '#606060' }}
-                >
-                    <ul className="nav nav-pills flex-column mb-auto gap-2">
-                        <li className="nav-item">
-                            <button
-                                className="btn text-light text-start"
-                                onClick={() => navigate('/admin/home')}
-                            >
-                                <HouseFill className="me-2" />
-                                Dashboard
-                            </button>
-                        </li>
-                        <li>
-                            <button
-                                className="btn text-light text-start"
-                                onClick={() => navigate('/admin/questions')}
-                            >
-                                <FileTextFill className="me-2" />
-                                Questions
-                            </button>
-                        </li>
-                        <li>
-                            <button
-                                className="btn text-light text-start"
-                                onClick={() => navigate('/admin/users')}
-                            >
-                                <PeopleFill className="me-2" />
-                                Users
-                            </button>
-                        </li>
-                        <li>
-                            <button
-                                className="btn text-light text-start"
-                                onClick={() => navigate('/admin/settings')}
-                            >
-                                <GearFill className="me-2" />
-                                Settings
-                            </button>
-                        </li>
-                    </ul>
-                </div>
+                <AdminNavBar />
 
                 <div
                     className="flex-grow-1 p-4"
